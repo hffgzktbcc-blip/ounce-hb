@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest a feature for running homebrew.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Requests for retail game support, key or firmware handling, NSP/XCI/NCA loading,
+        decryption or circumvention are **closed and locked without discussion**.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope confirmation
+      options:
+        - label: This request is about homebrew built from source with devkitPro/libnx.
+          required: true
+        - label: It does not involve retail software, keys, firmware, or circumventing protection.
+          required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What do you want, and which homebrew needs it?
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Public documentation you would implement it from
+      description: switchbrew wiki, libnx source, Arm docs. Do not link or quote emulator source code.

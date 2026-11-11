@@ -1,0 +1,39 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      # actions/checkout v7.0.1; full commit SHA verified against the upstream release tag.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Guardrails (unregistered binaries, key/decryption code)
+        run: |
+          scripts/guardrails.sh --self-test
+          scripts/guardrails.sh
+      - name: Toolchain
+        run: |
+          rustup show active-toolchain || rustup toolchain install stable --profile minimal -c rustfmt -c clippy
+          rustc --version
+      - name: fmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: test
+        run: cargo test --workspace --locked

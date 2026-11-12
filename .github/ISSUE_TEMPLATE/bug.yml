@@ -1,0 +1,38 @@
+name: Bug report (homebrew)
+description: A homebrew NRO/NSO you built from source misbehaves.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Scope: homebrew built from source with devkitPro/libnx only.**
+        Issues about retail games, keys, firmware, NSP/XCI/NCA files or piracy are
+        **closed and locked without discussion**.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope confirmation
+      options:
+        - label: This is homebrew I built from source (or open-source homebrew with a public repository).
+          required: true
+        - label: This issue does not involve retail software, keys, firmware, or circumventing protection.
+          required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source repository and commit of the homebrew
+      description: Needed so we can rebuild it.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ounce-hb commit or version, and host OS
+    validations:
+      required: true

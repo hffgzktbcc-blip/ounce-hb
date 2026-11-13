@@ -70,7 +70,7 @@ jobs:
       - name: End-to-end tests against ounce-core
         run: |
           set -o pipefail
-          cargo test --locked --test ounce_core_run --test ounce_core_e2e -- --nocapture 2>&1 | tee e2e.log
+          cargo test --locked --test ounce_core_run --test ounce_core_e2e --test guest_args -- --nocapture 2>&1 | tee e2e.log
           # A skipped test passes silently, so refuse a run where ounce-core was not used.
           if grep -q "SKIPPED" e2e.log; then
             echo "an end-to-end test was skipped; ounce-core was not exercised" >&2

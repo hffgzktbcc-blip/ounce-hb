@@ -96,6 +96,32 @@ pub enum RunError {
     UnsupportedKind(Kind),
     /// `OUNCE_HB_TIMEOUT_SECS` is set to something other than a usable number of seconds.
     BadTimeout(String),
+    /// The guest arguments together are longer than [`MAX_GUEST_ARGS_BYTES`]. `bytes` is the
+    /// measured total, counted as [`guest_args_len`] does.
+    GuestArgsTooLong {
+        bytes: usize,
+    },
+}
+
+/// Largest combined guest-argument length ounce-hb passes to ounce-core. Above it, ounce-core v0.8.0
+/// writes the argument strings over the program in memory (ounce-core #418: the config block at
+/// 0x7FFF0000 runs into the NRO at 0x80000000 once the strings pass about 62,839 bytes). This limit is
+/// well below that. Remove it only when ounce-core #418 is fixed upstream.
+pub const MAX_GUEST_ARGS_BYTES: usize = 16 * 1024;
+
+/// Combined guest-argument length, counted as the bytes of each argument plus one NUL terminator, as
+/// argv strings are laid out in memory.
+pub fn guest_args_len(args: &[String]) -> usize {
+    args.iter().map(|a| a.len() + 1).sum()
+}
+
+/// Refuses guest arguments longer than [`MAX_GUEST_ARGS_BYTES`] before any ounce-core process starts.
+pub fn check_guest_args(args: &[String]) -> Result<(), RunError> {
+    let bytes = guest_args_len(args);
+    if bytes > MAX_GUEST_ARGS_BYTES {
+        return Err(RunError::GuestArgsTooLong { bytes });
+    }
+    Ok(())
 }
 
 impl fmt::Display for RunError {
@@ -123,6 +149,12 @@ impl fmt::Display for RunError {
                 )
             }
             RunError::BadTimeout(why) => write!(f, "{why}"),
+            RunError::GuestArgsTooLong { bytes } => write!(
+                f,
+                "the guest arguments are {bytes} bytes together, above the {MAX_GUEST_ARGS_BYTES}-byte limit. \
+                 ounce-core v0.8.0 overwrites the program in memory with arguments that long (ounce-core #418), \
+                 so the run is refused. Shorten the arguments."
+            ),
         }
     }
 }
@@ -166,6 +198,7 @@ pub fn run(kind: Kind, bytes: &[u8], args: &[String]) -> Result<RunOutput, RunEr
     if kind != Kind::Nro {
         return Err(RunError::UnsupportedKind(kind));
     }
+    check_guest_args(args)?;
     let timeout = timeout_from_env()?;
     let backend = Subprocess::new(locate_core()?, timeout);
     run_with(&backend, kind, bytes, args)
@@ -181,6 +214,7 @@ pub fn run_with<B: Backend>(
 ) -> Result<RunOutput, RunError> {
     match kind {
         Kind::Nro => {
+            check_guest_args(args)?;
             let staged = Staged::create(bytes)?;
             backend.run_nro(staged.path(), args)
         }

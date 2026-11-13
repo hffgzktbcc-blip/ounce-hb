@@ -184,11 +184,12 @@ pub fn from_error(e: &RunError) -> StopReason {
         RunError::Io(_) => StopReason::HostIo {
             message: e.to_string(),
         },
-        RunError::UnsupportedArg(_) | RunError::UnsupportedKind(_) | RunError::BadTimeout(_) => {
-            StopReason::Refused {
-                message: e.to_string(),
-            }
-        }
+        RunError::UnsupportedArg(_)
+        | RunError::UnsupportedKind(_)
+        | RunError::BadTimeout(_)
+        | RunError::GuestArgsTooLong { .. } => StopReason::Refused {
+            message: e.to_string(),
+        },
     }
 }
 

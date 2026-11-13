@@ -46,5 +46,6 @@ The following features are not yet implemented in M0:
 - **Interactive Input**: Controller, touch, or HID input handling is not implemented.
 - **Networking**: BSD socket emulation and network communication services are not implemented.
 - **32-bit Support**: Only 64-bit ARM (AArch64) homebrew executables are supported; 32-bit (AArch32) executables are not supported.
+- **Guest-Argument Limit**: guest arguments may total at most 16 KiB (each argument's bytes plus one NUL). Longer sets are refused with exit code 2 before ounce-core starts. This works around [ounce-core #418](https://github.com/hffgzktbcc-blip/ounce-core/issues/418), where longer arguments overwrite the program's first instruction; see [DIAGNOSIS.md](DIAGNOSIS.md#guest-argument-limit).
 - **Host Audio Noise**: ounce-core v0.8.0 opens the default audio device on every run and has no switch to skip it. On machines with no sound device it prints ALSA or `[HostAudioSink]` errors on stderr even for clean runs. Exit status and explanations are unaffected; see [DIAGNOSIS.md](DIAGNOSIS.md#host-audio-noise-on-stderr).
 - **Stop Explanations**: Only the ounce-core v0.8.0 stop lines listed in [DIAGNOSIS.md](DIAGNOSIS.md) are recognised. Another ounce-core version may word them differently; such a run is reported as unrecognised with its output kept, not explained.

@@ -14,6 +14,10 @@ command-line tool by default, or a selected engine subprocess, and explains how 
 
 ## The Growing Family
 
+<p align="center">
+  <img src="docs/assets/family-banner.jpg" alt="The Ounce Project Family: Ounce-Core, Ounce-HB, Ounce-Runtime, and DeckStream" width="100%">
+</p>
+
 > *Built by curiosity. Tested by evidence. Powered by community.*
 
 ounce-hb is one of four independent, open-source projects sharing an evidence-first philosophy and a community:

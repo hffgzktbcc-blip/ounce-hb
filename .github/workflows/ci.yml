@@ -61,3 +61,40 @@ jobs:
 
       - name: test
         run: cargo test --workspace --locked
+
+  artifact-roundtrip:
+    name: release artifact compatibility (upload v4 / download v8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # This synthetic check exercises the proposed release download action without
+      # creating a tag, publishing a release, or building/distributing a binary.
+      - name: Create synthetic release artifact
+        shell: bash
+        run: |
+          mkdir -p artifact-input
+          printf 'ounce-hb artifact compatibility\n' > artifact-input/roundtrip.txt
+          (cd artifact-input && sha256sum roundtrip.txt > roundtrip.txt.sha256)
+
+      - name: Upload synthetic release artifact
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: release-artifact-compatibility
+          path: artifact-input/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Download synthetic release artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+
+      - name: Verify artifact contents and checksum
+        shell: bash
+        run: |
+          (cd dist && sha256sum --check roundtrip.txt.sha256)
+          printf 'ounce-hb artifact compatibility\n' | cmp - dist/roundtrip.txt

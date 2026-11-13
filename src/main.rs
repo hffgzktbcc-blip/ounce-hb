@@ -3,12 +3,13 @@
 use std::io::{self, Write};
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: ounce-hb run <file.nro> [-- guest args...]";
+const USAGE: &str =
+    "usage: ounce-hb run [--backend <core|runtime|path>] <file.nro> [-- guest args...]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse(&args) {
-        Ok((path, guest)) => run(path, guest),
+        Ok((path, guest, backend)) => run(path, guest, backend),
         Err(message) => {
             say_err(&format!("{message}\n"));
             ExitCode::from(2)
@@ -16,23 +17,52 @@ fn main() -> ExitCode {
     }
 }
 
-/// Splits the command line into the program path and the guest arguments. Only `run <path>` and
-/// `run <path> -- <guest args...>` are accepted: anything else between the path and `--` is an
-/// error, not something to drop quietly (an option meant for ounce-hb would otherwise vanish).
-fn parse(args: &[String]) -> Result<(&str, &[String]), String> {
-    match args {
-        [command, path, rest @ ..] if command == "run" => match rest {
-            [] => Ok((path, &[])),
-            [separator, guest @ ..] if separator == "--" => Ok((path, guest)),
-            [extra, ..] => Err(format!(
-                "ounce-hb: unexpected argument {extra:?} after the program path. ounce-hb run takes no options; guest arguments go after '--'.\n{USAGE}"
-            )),
-        },
-        _ => Err(USAGE.to_string()),
+/// Parse runner options on either side of the program path, stopping at the guest separator.
+type Parsed<'a> = (&'a str, &'a [String], Option<&'a str>);
+
+fn parse(args: &[String]) -> Result<Parsed<'_>, String> {
+    if args.first().map(String::as_str) != Some("run") {
+        return Err(USAGE.to_string());
     }
+    let mut path = None;
+    let mut backend = None;
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--" => {
+                return path
+                    .map(|p| (p, &args[i + 1..], backend))
+                    .ok_or_else(|| USAGE.to_string());
+            }
+            "--backend" => {
+                if backend.is_some() {
+                    return Err(format!("ounce-hb: duplicate --backend.\n{USAGE}"));
+                }
+                i += 1;
+                backend = args
+                    .get(i)
+                    .map(String::as_str)
+                    .filter(|value| !value.is_empty() && !value.starts_with('-'));
+                if backend.is_none() {
+                    return Err(format!(
+                        "ounce-hb: --backend requires core, runtime, or a path.\n{USAGE}"
+                    ));
+                }
+            }
+            value if path.is_none() && !value.starts_with('-') => path = Some(value),
+            extra => {
+                return Err(format!(
+                    "ounce-hb: unexpected argument {extra:?}; guest arguments go after '--'.\n{USAGE}"
+                ));
+            }
+        }
+        i += 1;
+    }
+    path.map(|p| (p, &args[args.len()..], backend))
+        .ok_or_else(|| USAGE.to_string())
 }
 
-fn run(path: &str, guest: &[String]) -> ExitCode {
+fn run(path: &str, guest: &[String], backend: Option<&str>) -> ExitCode {
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
@@ -50,7 +80,14 @@ fn run(path: &str, guest: &[String]) -> ExitCode {
     // The guest's own output is passed through unchanged. Anything abnormal is explained after it,
     // and the exit code says which category it was (docs/DIAGNOSIS.md).
     let mut note = None;
-    let reason = match ounce_hb::run(kind, &bytes, guest) {
+    let selection = backend
+        .map(std::ffi::OsString::from)
+        .or_else(|| std::env::var_os(ounce_hb::BACKEND_ENV).filter(|v| !v.is_empty()));
+    let engine = selection
+        .as_deref()
+        .map(ounce_hb::Engine::from_selection)
+        .unwrap_or(ounce_hb::Engine::Core);
+    let reason = match ounce_hb::run_engine(&engine, kind, &bytes, guest) {
         Ok(out) => {
             say_out(&out.stdout);
             say_err(&out.stderr);
@@ -59,7 +96,7 @@ fn run(path: &str, guest: &[String]) -> ExitCode {
         }
         Err(e) => ounce_hb::diagnose::from_error(&e),
     };
-    say_err(&reason.explain(path, guest));
+    say_err(&reason.explain_backend(path, guest, selection.as_deref()));
     if let Some(note) = note {
         say_err(&note);
     }

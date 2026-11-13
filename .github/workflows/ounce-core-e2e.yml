@@ -92,7 +92,8 @@ jobs:
           Expand-Archive -LiteralPath (Join-Path $dir $env:ASSET) -DestinationPath $dir -Force
           $bin = Join-Path $dir 'ounce-core.exe'
           if (-not (Test-Path $bin)) { throw "ounce-core.exe is not in $env:ASSET" }
-          & $bin --version | Select-Object -First 3
+          # No pipe here: a pipeline leaves $LASTEXITCODE unset, so the exit code would not be read.
+          & $bin --version
           if ($LASTEXITCODE -ne 0) { throw "ounce-core --version exited $LASTEXITCODE" }
           Add-Content -Path $env:GITHUB_ENV -Value "OUNCE_CORE_BIN=$bin"
       - name: Toolchain

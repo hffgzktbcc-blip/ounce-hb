@@ -31,10 +31,10 @@ loader, CLI frontend, guest argument handling, and runner orchestration.
 ---
 
 ### Why does ounce-hb use a subprocess runner instead of linking to ounce-core?
-In milestone M0, ounce-core has not yet exposed a public Rust library (`[lib]`) target; its
+ounce-core does not yet expose a public Rust library (`[lib]`) target; its
 functionality lives in its binary crate. ounce-hb solves this by executing `ounce-core run-nro ...`
-as a supervised child process with timeout protection and output capture. Once ounce-core introduces
-a library target, ounce-hb will add an in-process backend (see [OUNCE_CORE_API_NEEDS.md](../OUNCE_CORE_API_NEEDS.md)).
+as a supervised child process with timeout protection and output capture. If ounce-core gains a
+library target and the owner decides it is worth it ([#8](https://github.com/hffgzktbcc-blip/ounce-hb/issues/8)), ounce-hb can add an in-process backend (see [OUNCE_CORE_API_NEEDS.md](../OUNCE_CORE_API_NEEDS.md)).
 
 ---
 

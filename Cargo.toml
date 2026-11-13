@@ -10,6 +10,3 @@ publish = false
 members = ["."]
 
 [dependencies]
-# Pinned to a commit on ounce-core main. ounce-core currently has no library target, so Cargo
-# resolves and locks it but ignores it at build time; see docs/OUNCE_CORE_API_NEEDS.md.
-ounce-core = { git = "https://github.com/hffgzktbcc-blip/ounce-core", rev = "f80d2e4700b707e0de5d61637a3433cd51501cd0" }

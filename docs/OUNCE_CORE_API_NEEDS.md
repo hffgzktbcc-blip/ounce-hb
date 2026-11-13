@@ -39,8 +39,8 @@ otherwise.
 
 - The CPU engine (`--cpu`), `--sdmc` and `--gui` are not exposed. The subprocess runs ounce-core's
   defaults, with the display set to headless.
-- The `ounce-core` dependency in `Cargo.toml` is still pinned to commit `f80d2e4`. The subprocess
-  backend does not use it, and it is not the version tested above. Repinning is a separate decision.
+- `Cargo.toml` has no `ounce-core` dependency: the subprocess backend runs the released binary and
+  links nothing. A library backend would add one, pinned to a release tag.
 
 ## Parked: library backend
 

@@ -7,8 +7,7 @@ and `<case>.exit`. Timing lines (`in 41.2 ms`, `MIPS`) vary between runs and the
 ## How they were produced
 
 - Binary: `ounce-core` v0.8.0 (`--version` banner says v0.8.0), built from the ounce-core checkout at
-  commit `cf199bc` (merge of release 0.8.0). The pinned dependency in `Cargo.lock` is `f80d2e4`, which
-  is an ancestor of the v0.8.0 tag. The binary was already built in that checkout and was not rebuilt
+  commit `cf199bc` (merge of release 0.8.0). (ounce-hb no longer depends on the ounce-core crate.) The binary was already built in that checkout and was not rebuilt
   for these captures. Its path is `target/release/ounce-core` under the checkout.
 - Command, the same one `ounce-hb run` issues, run from this directory after `make_nros.py` wrote
   the NROs:

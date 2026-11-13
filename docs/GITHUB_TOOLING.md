@@ -20,28 +20,26 @@ The repository administrator must verify and configure the following settings un
 
 ### 2. Wiki
 - **Navigation:** Settings → General → Features → Wikis
-- **Action:** **Disable** (unchecked).
-- **Rationale:** All project specifications, architectural designs, API gap analyses (such as `docs/OUNCE_CORE_API_NEEDS.md`), and provenance records (`docs/PROVENANCE.md`) are tracked directly in the `docs/` directory under git version control. Keeping the Wiki disabled ensures that all documentation undergoes peer review and remains synchronized with code changes.
+- **Action:** **Enabled.**
+- **Source of truth:** the pages live in `docs/wiki/` and are reviewed in pull requests like any other file. The
+  GitHub wiki is a published copy. GitHub only creates a wiki's git repository after a first page is saved in the
+  browser, so that step is manual; after it, push the pages with relative links rewritten to wiki links:
+  `[x](FAQ.md)` becomes `[x](FAQ)`, and `../../CONTRIBUTING.md` becomes a full
+  `https://github.com/hffgzktbcc-blip/ounce-hb/blob/main/CONTRIBUTING.md` link.
+- Do not edit the wiki directly; edit `docs/wiki/`. Merging a change under `docs/wiki/` republishes it through
+  `.github/workflows/wiki-sync.yml` (`scripts/publish_wiki.py`; run it by hand with `--check` to preview).
 
-### 3. Branch Protection & Rulesets (`main`)
-- **Navigation:** Settings → Branches (or Settings → Rules → Rulesets)
-- **Target Branch:** `main`
-- **Required Rules:**
-  - **Require a pull request before merging:**
-    - Require at least 1 approving review from repository maintainers before merge.
-    - Dismiss stale pull request approvals when new commits are pushed.
-    - Require review from Code Owners (if CODEOWNERS is configured).
-  - **Require status checks to pass before merging:**
-    - Require branches to be up to date before merging.
-    - Enforce the following status checks:
-      - `check (ubuntu-latest)`
-      - `check (macos-latest)`
-      - `check (windows-latest)`
-  - **Block direct pushes:**
-    - Do not allow force pushes (`Allow force pushes` disabled).
-    - Do not allow branch deletions (`Allow deletions` disabled).
-  - **Enforce for administrators:**
-    - Enable `Do not allow bypassing the above settings` to ensure consistency and auditability for all contributors, including repository owners.
+### 3. Branch Protection (`main`)
+- **Navigation:** Settings → Branches
+- **Applied state (2026-11-13):**
+  - A pull request is required to merge. Required approving reviews: 0 (a single maintainer, so a required review
+    would block every change); conversations must be resolved.
+  - Required status checks: `check (ubuntu-latest)`, `check (macos-latest)`, `check (windows-latest)`,
+    `e2e (linux-x86_64)`, `e2e (macos-arm64)`, `Cargo deny`. Branches need not be up to date.
+  - Force pushes and branch deletion are blocked.
+  - Not enforced for administrators, so the owner can still merge in an emergency.
+- **Tighten when there is more than one maintainer:** require 1 approving review, require Code Owners review, and
+  enable "Do not allow bypassing the above settings".
 
 ### 4. Pages
 - **Navigation:** Settings → Pages

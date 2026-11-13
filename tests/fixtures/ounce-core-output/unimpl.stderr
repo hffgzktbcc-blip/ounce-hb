@@ -1,0 +1,8 @@
+
+[VM Error] Unimplemented instruction 0x00000000 at PC: 0x0000000080000080
+  Final PC: 0x0000000080000080
+
+Run stopped early. The CPU stopped on an error. The [VM Error] line above names the address; 'Unimplemented instruction' means a gap in Ounce Core.
+  Compare with the host CPU:  ounce-core diverge unimpl.nro   (Apple Silicon and other AArch64 hosts)
+  Report it:        https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=emulation_bug.yml
+                    Include: ounce-core run-nro unimpl.nro --cpu=tier3, your OS, `ounce-core --version`, and the stop line above.

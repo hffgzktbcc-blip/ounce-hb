@@ -53,18 +53,31 @@ cargo run -- run path/to/app.nro -- arg1 arg2
 ```
 
 ### Subprocess Runner Behavior
-- **Timeout**: Each execution is subject to a 60-second wall-clock limit. If exceeded, the child process is terminated and exit code 3 is returned.
+- **Timeout**: Each execution is subject to a 60-second wall-clock limit. If exceeded, the child process is terminated and exit code 4 is returned.
 - **Guest Arguments**: Guest arguments starting with `-` are refused because upstream `ounce-core` silently discards them. Pass positional arguments only.
 - **Headless Mode**: ounce-hb runs `ounce-core` with `--present=headless` so no GUI window or host audio device is required.
 - **Output Forwarding**: Program stdout and stderr are forwarded directly to your console.
+- **Stop Explanations**: When a run stops abnormally, ounce-hb prints the guest output unchanged, then a short plain-words reason, the `ounce-hb run` command that reproduces it, and the exit code. Details and the recognised ounce-core lines are in [docs/DIAGNOSIS.md](docs/DIAGNOSIS.md).
 
 ### Exit Codes
+A clean guest exit returns `0`. Every other outcome has its own code, so scripts can tell categories apart. The full list is in [docs/DIAGNOSIS.md](docs/DIAGNOSIS.md).
+
 | Exit Code | Meaning |
 |---|---|
-| `0` | Guest program executed successfully and exited with 0 |
-| `1` | Guest program exited with 1 (or was terminated by a signal) |
-| `2` | Bad CLI invocation, file unreadable, or out-of-scope input (e.g. NSP, XCI, NCA, NPDM, or unrecognized magic) |
-| `3` | Runner error (missing `ounce-core` binary, execution timeout, unsupported argument starting with `-`, or unsupported NSO kind) |
+| `0` | Guest program exited normally (svcExitProcess) |
+| `1` | ounce-core stopped in a way ounce-hb does not recognise (raw output is printed unchanged) |
+| `2` | Bad CLI invocation, file unreadable, out-of-scope input (e.g. NSP, XCI, NCA, NPDM, or unrecognized magic), a guest argument starting with `-`, or an unsupported NSO kind |
+| `3` | ounce-core binary missing or not found |
+| `4` | Execution timeout (ounce-core killed after 60 seconds) |
+| `5` | ounce-hb could not start, wait on, or stage for ounce-core (host I/O error) |
+| `10` | Unimplemented instruction in ounce-core |
+| `11` | Memory access fault |
+| `12` | Other CPU error reported by ounce-core |
+| `13` | Guest called svcBreak |
+| `14` | Guest called a system service ounce-core does not provide |
+| `15` | CPU halted |
+| `16` | Instruction budget exhausted before the guest exited |
+| `17` | ounce-core could not load the program (loader error) |
 
 ---
 

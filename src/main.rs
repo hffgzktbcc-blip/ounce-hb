@@ -33,21 +33,16 @@ fn run(path: &str, guest: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    match ounce_hb::run(kind, &bytes, guest) {
+    // The guest's own output is passed through unchanged. Anything abnormal is explained after it,
+    // and the exit code says which category it was (docs/DIAGNOSIS.md).
+    let reason = match ounce_hb::run(kind, &bytes, guest) {
         Ok(out) => {
             print!("{}", out.stdout);
             eprint!("{}", out.stderr);
-            match out.exit_code {
-                Some(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
-                None => {
-                    eprintln!("ounce-hb: ounce-core was killed by a signal");
-                    ExitCode::from(1)
-                }
-            }
+            ounce_hb::diagnose::from_output(&out)
         }
-        Err(e) => {
-            eprintln!("ounce-hb: {e}");
-            ExitCode::from(3)
-        }
-    }
+        Err(e) => ounce_hb::diagnose::from_error(&e),
+    };
+    eprint!("{}", reason.explain(path, guest));
+    ExitCode::from(reason.exit_code())
 }

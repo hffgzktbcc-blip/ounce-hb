@@ -10,6 +10,7 @@ use std::fmt;
 use std::time::Duration;
 
 pub mod backend;
+pub mod diagnose;
 
 use backend::Staged;
 pub use backend::{

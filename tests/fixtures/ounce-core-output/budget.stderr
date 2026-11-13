@@ -1,0 +1,3 @@
+
+Run stopped early. The instruction budget ran out before the program exited.
+  Raise the limit:  OUNCE_NRO_BUDGET=500000000 ounce-core run-nro budget.nro

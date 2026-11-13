@@ -4,14 +4,27 @@ A runner for **Nintendo Switch homebrew**: unencrypted NRO (and libnx-produced N
 that you built yourself from source with [devkitPro](https://devkitpro.org/) and
 [libnx](https://github.com/switchbrew/libnx).
 
-ounce-hb builds on [ounce-core](https://github.com/hffgzktbcc-blip/ounce-core) (CPU engines, MMU,
-and verification tooling) and aims for transparent execution, strict clean-room provenance,
-informative diagnostics, and reproducible results.
+ounce-hb runs homebrew through the released [ounce-core](https://github.com/hffgzktbcc-blip/ounce-core)
+command-line tool and explains how each run stopped, with stable exit codes.
 
-> **Status: Milestone M0**. The CLI validates input formats and refuses all out-of-scope
+> **Status: v0.0.1 (Milestone M0)**. The CLI validates input formats and refuses out-of-scope
 > containers. It executes validated NROs via an `ounce-core` subprocess runner in headless mode.
 > See [Usage](#usage), [docs/LIMITS.md](docs/LIMITS.md), and
 > [docs/OUNCE_CORE_API_NEEDS.md](docs/OUNCE_CORE_API_NEEDS.md).
+
+## The Ounce Family
+
+ounce-hb is one of three related projects. Each one is a separate repository with its own licence.
+
+| Project | What it is for | When to choose it | Licence | Link |
+|---|---|---|---|---|
+| **ounce-core** | Runs ARM64 programs on three CPU engines and compares the output with recorded output from real ARM64 hardware. | You want to check whether a program gives the same result on ARM64 as on hardware, or you want to work on the engines themselves. | MIT | [github.com/hffgzktbcc-blip/ounce-core](https://github.com/hffgzktbcc-blip/ounce-core) |
+| **ounce-hb** (this repo) | Runs unencrypted, homebrew-only NRO programs through the released `ounce-core` CLI, with diagnostics and exit codes. | You want a simple way to run your own homebrew from a script or terminal and see why a run stopped. | MIT | [github.com/hffgzktbcc-blip/ounce-hb](https://github.com/hffgzktbcc-blip/ounce-hb) |
+| **ounce-runtime** | Experimental AArch64 research runtime with a native JIT, host GPU presentation and Mac controller support. | You want to experiment with those features and you accept GPL-3.0-or-later terms. | GPL-3.0-or-later | [github.com/hffgzktbcc-blip/ounce-runtime](https://github.com/hffgzktbcc-blip/ounce-runtime) |
+
+**ounce-runtime is a separate GPL derivative of Ounce Core.** It is not part of this repository, and
+no code flows from it into ounce-hb or ounce-core, which stay MIT-licensed. Results from one project do
+not carry over to the others. Each project's own documentation states its limits.
 
 ---
 

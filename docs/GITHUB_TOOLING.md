@@ -35,7 +35,7 @@ The repository administrator must verify and configure the following settings un
   - A pull request is required to merge. Required approving reviews: 0 (a single maintainer, so a required review
     would block every change); conversations must be resolved.
   - Required status checks: `check (ubuntu-latest)`, `check (macos-latest)`, `check (windows-latest)`,
-    `e2e (linux-x86_64)`, `e2e (macos-arm64)`, `Cargo deny`. Branches need not be up to date.
+    `e2e (linux-x86_64)`, `e2e (macos-arm64)`. `Cargo deny` is not required because its workflow only runs when dependency files change, and a required check that never reports blocks every other PR. Branches need not be up to date.
   - Force pushes and branch deletion are blocked.
   - Not enforced for administrators, so the owner can still merge in an emergency.
 - **Tighten when there is more than one maintainer:** require 1 approving review, require Code Owners review, and

@@ -111,10 +111,47 @@ fn clean_guest_exit_is_zero_with_no_explanation() {
         &[],
         &[],
     );
-    assert_eq!(out.status.code(), Some(0), "stderr:\n{}", text(&out.stderr));
+    let err = text(&out.stderr);
+    assert_eq!(out.status.code(), Some(0), "stderr:\n{err}");
     assert!(text(&out.stdout).contains("[VM] Process exited gracefully (svcExitProcess)."));
-    assert!(out.stderr.is_empty(), "{}", text(&out.stderr));
+    assert!(
+        !err.contains("ounce-hb:"),
+        "no diagnosis for a clean exit:\n{err}"
+    );
+    // ounce-core's host audio layer prints device errors on machines with no sound device (CI runners
+    // do this), and ounce-core has no switch to skip it. Only those known lines are tolerated; any other
+    // stderr text fails the test.
+    for line in err.lines().filter(|l| !l.trim().is_empty()) {
+        assert!(
+            is_host_audio_noise(line),
+            "unexpected stderr line from ounce-core: {line:?}\n{err}"
+        );
+    }
     let _ = fs::remove_dir_all(dir);
+}
+
+/// stderr lines ounce-core prints when the host has no usable audio device. Captured from CI runners;
+/// see tests/fixtures/ounce-core-output/NOTES.md.
+fn is_host_audio_noise(line: &str) -> bool {
+    let line = line.trim();
+    line.starts_with("ALSA lib ") || line.starts_with("[HostAudioSink] ")
+}
+
+#[test]
+fn captured_audio_noise_is_the_only_stderr_tolerated() {
+    for capture in [
+        include_str!("fixtures/ounce-core-output/clean_audio_noise_linux.stderr"),
+        include_str!("fixtures/ounce-core-output/clean_audio_noise_macos.stderr"),
+    ] {
+        assert!(capture.lines().count() > 0);
+        for line in capture.lines() {
+            assert!(is_host_audio_noise(line), "{line:?}");
+        }
+    }
+    assert!(!is_host_audio_noise(
+        "[VM Error] Unimplemented instruction 0x0 at PC: 0x80000000"
+    ));
+    assert!(!is_host_audio_noise("[Loader Error] anything"));
 }
 
 #[test]
@@ -257,6 +294,52 @@ fn wall_clock_timeout_exits_4_and_kills_ounce_core() {
         !process_running_with(&needle),
         "an ounce-core process is still running for {needle}"
     );
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Code 1. ounce-core prints nothing listed when the OS kills it: this is the one way a real run ends
+/// with no recognised line. The test kills the real ounce-core process with SIGKILL from outside, as
+/// the out-of-memory killer would, and checks that ounce-hb reports it as unrecognised with exit 1.
+#[test]
+fn signal_killed_ounce_core_is_unrecognised_exit_1() {
+    let Some(core) = core_bin("signal_killed_ounce_core_is_unrecognised_exit_1") else {
+        return;
+    };
+    let dir = work_dir("killed");
+    let nro_path = dir.join("program.nro");
+    fs::write(&nro_path, nro(&[SPIN], None)).unwrap();
+    let child = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .env(CORE_BIN_ENV, &core)
+        .env("TMPDIR", dir.join("tmp"))
+        .env("OUNCE_NRO_BUDGET", "100000000000")
+        .env("OUNCE_HB_TIMEOUT_SECS", "60")
+        .arg("run")
+        .arg(&nro_path)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let needle = dir.join("tmp").display().to_string();
+    // Wait until the real ounce-core process exists, then kill it by its command line.
+    let started = Instant::now();
+    while !process_running_with(&needle) {
+        assert!(
+            started.elapsed().as_secs() < 30,
+            "ounce-core never started for {needle}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let killed = Command::new("pkill")
+        .args(["-KILL", "-f", &needle])
+        .status()
+        .unwrap();
+    assert!(killed.success(), "pkill found no ounce-core process");
+    let out = child.wait_with_output().unwrap();
+    let err = text(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "stderr:\n{err}");
+    assert!(err.contains("does not recognise"), "{err}");
+    assert!(err.contains("killed by a signal"), "{err}");
+    assert!(err.contains("To reproduce: ounce-hb run "), "{err}");
     let _ = fs::remove_dir_all(dir);
 }
 

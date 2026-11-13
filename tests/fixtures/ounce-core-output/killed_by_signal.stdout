@@ -1,0 +1,13 @@
+============================================================
+  OUNCE-CORE: NVIDIA Tegra T239 / Horizon Research Runtime
+  Target: ARMv8.5-A AArch64 (PAC + BTI) | Horizon OS 64-bit Microkernel
+============================================================
+
+[Loader] Reading package/executable: /private/tmp/claude-501/-Users-nathanaelgovender-orca-workspaces-ounce-hb-hb-diagnose/0f8e92ed-ed4e-448d-a028-fd3293e2da10/scratchpad/killcap/tmp/ounce-hb-run-56740-1794551585108307000-0/program.nro
+[BootLoader] Successfully loaded package:
+  Format      : NRO0
+  Title ID    : 0x0000000000000000
+  Code size   : 0x00000084 (132 bytes)
+  MOD0 relocs : 0
+[VM] Starting execution at PC: 0x0000000080000000
+[VM] Stack Pointer: 0x0000007FFFFFE000

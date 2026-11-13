@@ -76,6 +76,15 @@ ounce-core's `run-nro` does not report a guest exit status. `svcExitProcess` car
   ounce-core child is killed and reaped before ounce-hb returns. Without the raised budget the default
   50 million instructions run out within about a second, so that loop reports `16`, not `4`.
 
+## Host audio noise on stderr
+
+ounce-core v0.8.0 opens the default host audio device on every run, and it has no flag or variable to
+skip that. On a machine with no sound device it writes errors to stderr during an otherwise clean run:
+ALSA's `ALSA lib ...` lines on Linux, or `[HostAudioSink] Output stream error: ...` on macOS. Captured
+text is in `tests/fixtures/ounce-core-output/clean_audio_noise_*.stderr`. The exit status is still `0`, so
+`ounce-hb run` prints no diagnosis for these lines. ounce-hb passes them through unchanged. The end-to-end
+tests tolerate only lines that begin `ALSA lib ` or `[HostAudioSink] `.
+
 ## Timeout
 
 `ounce-hb run` kills ounce-core after 60 seconds by default. The limit can be changed with
@@ -97,7 +106,7 @@ the ounce-core v0.8.0 binary, or the captured ounce-core output from such a run 
 | Code | Category | Backed by a real run? | Where |
 |---|---|---|---|
 | `0` | clean exit | Yes | `clean_guest_exit_is_zero_with_no_explanation`; fixture `clean` |
-| `1` | unrecognised | Not by an ounce-hb run. The fixture `usage` is real ounce-core text, but for a command ounce-hb never issues. The branch for a signal kill is covered only by a unit test using a shell script. | fixture `usage`; 300 random-code NROs with valid headers gave only unimplemented-instruction (255) and memory-fault (45) stops, with no panic and no unrecognised output |
+| `1` | unrecognised | Yes, by a real run killed by a signal: ounce-core was sent SIGKILL from outside and printed no stop line (`signal_killed_ounce_core_is_unrecognised_exit_1`; fixture `killed_by_signal.stdout`). No *natural* ounce-core stop reaches this code: every exit path in the `run-nro` flow prints a listed marker. About 1,000 generated runs (random SVC sequences, random code words, random loader inputs) and a few argument-size probes produced no panic and no unlisted stop. |
 | `2` | refused | Yes (real `ounce-hb` run, no ounce-core output involved) | `refused_guest_argument_exits_2_without_core`, `invalid_timeout_override_exits_2_without_core` |
 | `3` | core missing | Yes (real `ounce-hb` run) | `tests/cli.rs` `valid_nro_without_core_binary_reports_it` |
 | `4` | timeout | Yes | `wall_clock_timeout_exits_4_and_kills_ounce_core` |

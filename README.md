@@ -53,7 +53,7 @@ cargo run -- run path/to/app.nro -- arg1 arg2
 ```
 
 ### Subprocess Runner Behavior
-- **Timeout**: Each execution is subject to a 60-second wall-clock limit. If exceeded, the child process is terminated and exit code 4 is returned.
+- **Timeout**: Each execution is subject to a 60-second wall-clock limit. If exceeded, the child process is killed and exit code 4 is returned. Set `OUNCE_HB_TIMEOUT_SECS` to a number of seconds greater than 0 and at most 86400 to change the limit; any other value is refused with exit code 2.
 - **Guest Arguments**: Guest arguments starting with `-` are refused because upstream `ounce-core` silently discards them. Pass positional arguments only.
 - **Headless Mode**: ounce-hb runs `ounce-core` with `--present=headless` so no GUI window or host audio device is required.
 - **Output Forwarding**: Program stdout and stderr are forwarded directly to your console.
@@ -66,9 +66,9 @@ A clean guest exit returns `0`. Every other outcome has its own code, so scripts
 |---|---|
 | `0` | Guest program exited normally (svcExitProcess) |
 | `1` | ounce-core stopped in a way ounce-hb does not recognise (raw output is printed unchanged) |
-| `2` | Bad CLI invocation, file unreadable, out-of-scope input (e.g. NSP, XCI, NCA, NPDM, or unrecognized magic), a guest argument starting with `-`, or an unsupported NSO kind |
+| `2` | Bad CLI invocation, file unreadable, out-of-scope input (e.g. NSP, XCI, NCA, NPDM, or unrecognized magic), a guest argument starting with `-`, a malformed `OUNCE_HB_TIMEOUT_SECS`, or an unsupported NSO kind |
 | `3` | ounce-core binary missing or not found |
-| `4` | Execution timeout (ounce-core killed after 60 seconds) |
+| `4` | Execution timeout (ounce-core killed after 60 seconds, or `OUNCE_HB_TIMEOUT_SECS`) |
 | `5` | ounce-hb could not start, wait on, or stage for ounce-core (host I/O error) |
 | `10` | Unimplemented instruction in ounce-core |
 | `11` | Memory access fault |

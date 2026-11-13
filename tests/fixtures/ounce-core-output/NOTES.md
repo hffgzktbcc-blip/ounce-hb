@@ -36,3 +36,28 @@ and `<case>.exit`. Timing lines (`in 41.2 ms`, `MIPS`) vary between runs and the
 The `hlt #0` probe gave `Unimplemented instruction 0xD4400000`, not a CPU-halted line, so no fixture
 for `[VM] CPU Halted:` exists. The parser recognises that line from the ounce-core source
 (`src/main.rs`), and `tests/diagnose.rs` says so.
+
+## Host-audio noise on machines with no sound device
+
+ounce-core v0.8.0 opens the default host audio device for every run (`HostAudioSink::new` in
+`src/audio/host.rs`, called from `src/main.rs`), and has no flag or variable to skip it. On CI runners
+with no sound device, the lines below appear on stderr of an otherwise clean run. They do not change the
+exit status and are not ounce-hb diagnoses.
+
+- `clean_audio_noise_linux.stderr`: the ALSA lines from the `clean` test on `ubuntu-latest`, copied from
+  CI run 43376441897, job `e2e (linux-x86_64)`, with the log timestamps removed. ALSA prints them from the
+  C library, not from ounce-core's Rust code.
+- `clean_audio_noise_macos.stderr`: the `[HostAudioSink]` line from the same run's `e2e (macos-arm64)`
+  job, with the log timestamp removed. It is a runtime stream error from the audio sink, not a
+  startup failure.
+
+`tests/ounce_core_e2e.rs` tolerates only lines beginning `ALSA lib ` or `[HostAudioSink] `.
+
+## Killed by a signal (exit code 1 in ounce-hb)
+
+- `killed_by_signal.stdout`: the stdout of a real ounce-core v0.8.0 run of a spinning NRO (`b .`, with
+  `OUNCE_NRO_BUDGET=100000000000`) that was sent SIGKILL from outside while running. ounce-core printed no
+  stop line and no stderr, so the run has no recognised stop and ounce-hb reports it as unrecognised with
+  exit 1. The `.stderr` file is empty for that reason. There is no `.exit` file: the process had no exit
+  status, only a signal.
+- Reproduced by `signal_killed_ounce_core_is_unrecognised_exit_1` in `tests/ounce_core_e2e.rs`.

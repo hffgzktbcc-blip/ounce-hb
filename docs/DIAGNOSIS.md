@@ -135,6 +135,43 @@ the ounce-core v0.8.0 binary, or the captured ounce-core output from such a run 
 | `16` | budget exhausted | Yes | `exhausted_budget_exits_16`; fixture `budget` |
 | `17` | loader error | Yes | `loader_error_exits_17`; fixture `loader_error` |
 
+### Exit code by verified OS
+
+The e2e job (`.github/workflows/ounce-core-e2e.yml`) runs the same tests against the pinned v0.8.0
+release binary on each OS. "Verified" means the test ran on that OS in CI and passed. Nothing here is
+from a local run on that OS.
+
+| Code | Category | Linux x86_64 | macOS arm64 | Windows x86_64 |
+|---|---|---|---|---|
+| `0` | clean exit | Verified | Verified | Verified |
+| `1` | unrecognised | Verified (killed by SIGKILL) | Verified (killed by SIGKILL) | Verified for a kill by `Stop-Process`, which reports exit code `-1`. Not a signal. A natural Windows stop with exit code 1 is not verified. |
+| `2` | refused | Verified | Verified | Verified |
+| `3` | core missing | Verified by `tests/cli.rs` in the `check` job, not by the e2e job | Verified by `tests/cli.rs` in the `check` job, not by the e2e job | Verified by `tests/cli.rs` in the `check` job, not by the e2e job |
+| `4` | timeout | Verified | Verified | Verified |
+| `5` | host I/O | Verified | Verified | Verified (a non-PE `.exe` cannot be spawned) |
+| `10` | unimplemented instruction | Verified | Verified | Verified |
+| `11` | memory fault | Verified | Verified | Verified |
+| `12` | CPU error | Verified | Verified | Verified |
+| `13` | svcBreak | Verified | Verified | Verified |
+| `14` | unhandled SVC | Verified | Verified | Verified |
+| `15` | CPU halted | Not reachable | Not reachable | Not reachable |
+| `16` | budget exhausted | Verified | Verified | Verified |
+| `17` | loader error | Verified | Verified | Verified |
+
+What the Windows column does not cover:
+
+- **Code `1` on Windows is the kill path only.** The test kills the real ounce-core with
+  `Stop-Process -Force`. Windows has no signals, so the process exits with code `-1` (`0xFFFFFFFF`),
+  and ounce-hb prints `ounce-core exit code: -1.` and exits `1`. The "killed by a signal" wording
+  appears only on unix. The generated-run campaign behind the code `1` evidence above was not run on
+  Windows, so no natural Windows stop reaches code `1` in the evidence.
+- **Code `3` is not in the e2e job.** Its Windows evidence is `tests/cli.rs` in the `check` job,
+  which runs `cargo test --workspace` on each OS, and that job passes on Windows.
+- **No Windows fixture exists.** Everything in `tests/fixtures/ounce-core-output/` is a capture from
+  Linux or macOS. The clean-exit test passed on Windows, so any stderr that ounce-core printed there
+  matched the tolerated audio-noise prefixes or was empty. No Windows capture was saved, so the
+  Windows stderr text is not recorded here.
+
 ### Why `15` cannot be captured
 
 ounce-core v0.8.0 (checkout at commit `cf199bc`) defines the variant and prints the line, but nothing
@@ -170,5 +207,7 @@ capture.
 `tests/ounce_core_e2e.rs` runs the real `ounce-hb` binary against the real ounce-core CLI. It generates
 each NRO inside the test and checks the exit code and category for each code above that a program can
 reach. It skips with a SKIPPED line when no ounce-core binary is configured. CI
-(`.github/workflows/ounce-core-e2e.yml`) downloads the v0.8.0 release asset for Linux x86_64 and macOS
-arm64, checks its sha256 against the release's `SHA256SUMS`, and fails if any test was skipped.
+(`.github/workflows/ounce-core-e2e.yml`) downloads the v0.8.0 release asset for Linux x86_64, macOS
+arm64 and Windows x86_64, checks its sha256 against the release's `SHA256SUMS`, runs the tests on each
+OS, and fails if any test was skipped. The job summary gives the passed, failed and skipped counts per
+OS. The per-OS results are in the table above.

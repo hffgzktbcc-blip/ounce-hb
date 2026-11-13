@@ -44,7 +44,7 @@ not carry over to the others. Each project's own documentation states its limits
 - **Circumvention of technical protection measures** or DRM.
 - **Reverse-engineered code from existing Switch emulators** (e.g., Yuzu, Ryujinx, Suyu).
 
-Issues, pull requests, or discussions requesting retail software support, keys, firmware, or circumvention are **closed and locked immediately without discussion**.
+Issues, pull requests, or discussions requesting retail software support, keys, firmware, or circumvention are **flagged for maintainer review and marked out of scope** (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ---
 

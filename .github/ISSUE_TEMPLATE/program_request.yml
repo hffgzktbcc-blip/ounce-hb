@@ -7,7 +7,7 @@ body:
       value: |
         **Scope: open-source homebrew built from source with devkitPro/libnx only.**
         Requests involving retail games, keys, firmware, or circumvention will be
-        **closed and locked without discussion**.
+        **flagged for maintainer action as out of scope**.
   - type: checkboxes
     id: scope
     attributes:

@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Requests for retail game support, key or firmware handling, NSP/XCI/NCA loading,
-        decryption or circumvention are **closed and locked without discussion**.
+        decryption or circumvention are **out of scope and flagged for maintainer action**.
   - type: checkboxes
     id: scope
     attributes:

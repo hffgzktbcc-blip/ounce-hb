@@ -1,0 +1,49 @@
+name: Suggest a homebrew program to test
+description: Propose an open-source homebrew program (NRO/NSO) to test with ounce-hb.
+labels: ["program", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Scope: open-source homebrew built from source with devkitPro/libnx only.**
+        Requests involving retail games, keys, firmware, or circumvention will be
+        **closed and locked without discussion**.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope confirmation
+      options:
+        - label: This is open-source homebrew with a publicly accessible repository.
+          required: true
+        - label: The source license permits distribution and automated testing.
+          required: true
+        - label: This program does not involve retail software, keys, firmware, or protection bypasses.
+          required: true
+  - type: input
+    id: program
+    attributes:
+      label: Program name, repository URL, and license
+      description: e.g. "switch-hello-world (https://github.com/..., MIT)"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Pinned commit SHA or release tag
+      description: Pinned version to ensure reproducible builds.
+    validations:
+      required: true
+  - type: textarea
+    id: build
+    attributes:
+      label: Build instructions
+      description: How to build the NRO using devkitPro/libnx.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Expected deterministic behavior
+      description: What does the program output to console or return on exit?
+    validations:
+      required: true

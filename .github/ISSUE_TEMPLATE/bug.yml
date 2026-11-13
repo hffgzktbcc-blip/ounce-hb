@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         **Scope: homebrew built from source with devkitPro/libnx only.**
-        Issues about retail games, keys, firmware, NSP/XCI/NCA files or piracy are
+        Issues about retail games, keys, firmware, retail containers or piracy are
         **closed and locked without discussion**.
   - type: checkboxes
     id: scope
@@ -21,7 +21,7 @@ body:
     id: source
     attributes:
       label: Source repository and commit of the homebrew
-      description: Needed so we can rebuild it.
+      description: Needed so we can rebuild and verify it.
     validations:
       required: true
   - type: textarea
@@ -30,9 +30,18 @@ body:
       label: What happened, and what did you expect?
     validations:
       required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command and observed output
+      description: The command line run, exit code, and captured stdout/stderr.
+      render: shell
+    validations:
+      required: true
   - type: input
     id: version
     attributes:
-      label: ounce-hb commit or version, and host OS
+      label: ounce-hb commit/version, ounce-core version, and host OS
+      description: Output of `git rev-parse HEAD`, ounce-core version, and operating system / architecture.
     validations:
       required: true

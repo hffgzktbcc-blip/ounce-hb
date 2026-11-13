@@ -1,37 +1,92 @@
-# Contributing
+# Contributing to ounce-hb
 
-Thanks for helping. These rules apply from the first commit and are not negotiable.
+Thank you for contributing to ounce-hb. These rules apply to all contributions from the
+first commit and are not negotiable.
 
-## Scope
-Homebrew only (NRO, and NSO/NPDM produced by devkitPro/libnx). No NSP/XCI/NCA loading, no
-decryption, no key handling, no firmware or system files, no circumvention of any technical
-protection. Issues and pull requests about retail software, keys or piracy are closed and
-locked without discussion.
+---
 
-## Clean-room rule
-- Allowed sources: the switchbrew wiki, libnx/devkitPro source and headers (check each
-  licence), Arm documentation, and our own tests.
-- **Do not copy code from, and do not read the source of,** Yuzu, Ryujinx, Suyu or any other
-  Switch emulator or their forks. If you have read it, say so and do not work on the
-  affected area. A contributor who has read such code must not implement the matching part.
-- Cite the public source for non-obvious behaviour in a comment or the PR description.
+## 1. Scope & Core Boundary
 
-## Provenance rule
-Binary files are accepted only if they are built from committed source with a pinned
-toolchain and registered in [docs/PROVENANCE.md](docs/PROVENANCE.md). `scripts/guardrails.sh`
-fails CI on unregistered binaries and on key/decryption code patterns. No keys, retail
-content or firmware, ever, including in tests (use synthetic data).
+ounce-hb is dedicated **exclusively** to running unencrypted Nintendo Switch homebrew:
+- Unencrypted **NRO** files and **NSO** modules built from source using [devkitPro](https://devkitpro.org/)
+  and [libnx](https://github.com/switchbrew/libnx).
 
-## AI-assistance disclosure
-AI tools are allowed. State in the PR description which tool helped and for what. You are
-responsible for the result: you must understand it, it must follow the clean-room rule, and
-you must not paste in code you cannot attribute. Do not ask an AI tool to reproduce emulator code.
+We maintain zero tolerance for retail/commercial software:
+- **No keys, key handling, key derivation, or key parsing.**
+- **No console firmware, system archives, or encrypted binaries.**
+- **No NSP, XCI, or NCA files, and no container decryption.**
+- **No circumvention of any technical protection measures.**
 
-## Checks before a PR
+Pull requests, issues, or discussions regarding retail titles, keys, firmware, or copyright
+circumvention will be closed and locked immediately without discussion.
+
+---
+
+## 2. Clean-Room Rule
+
+ounce-hb is developed strictly under clean-room engineering principles:
+
+### Permitted Sources
+- **The switchbrew wiki** (`switchbrew.org`): public documentation of NRO/NSO file formats and Horizon OS ABI.
+- **devkitPro and libnx**: open-source source code and C/C++ header definitions (verify individual license terms).
+- **Arm Architecture Reference Manual** (ARMv8-A): official instruction set specifications and CPU semantics.
+- **Synthetic tests**: test fixtures and inputs generated in-house from documented specifications.
+
+### Prohibited Sources
+- **Do not read, consult, or copy code from** Yuzu, Ryujinx, Suyu, Skyline, Strato, or any other Switch emulator or their forks (regardless of whether they are licensed under GPL, MIT, or proprietary terms).
+- **Tainted Contributors**: If you have previously read or worked on code in any Switch emulator, you must disclose this upfront in your PR or issue, and you must not write or review code for the corresponding subsystem in ounce-hb.
+- **Attribution**: Whenever implementing non-obvious behavior, cite the public specification or libnx header in a code comment or PR description.
+
+See [docs/CLEAN_ROOM.md](docs/CLEAN_ROOM.md) for full policy details.
+
+---
+
+## 3. How to Claim Work
+
+To ensure smooth collaboration and prevent duplicate effort:
+
+1. **Browse Issues**: Check existing GitHub Issues and Milestones to see what work is open.
+2. **Claiming an Issue**: Before investing substantial time in an implementation, comment on the relevant issue to state that you are working on it.
+3. **Small & Focused**: Keep pull requests focused on a single logical change or bug fix. Avoid monolithic PRs that combine unrelated refactorings with feature work.
+4. **Topic Branches**: Develop your changes on a dedicated topic branch off `main`.
+
+---
+
+## 4. Provenance & Binary Files
+
+We do not accept opaque binary blobs:
+- Any binary file added to the repository (e.g. test fixtures) must be built from committed source with a pinned toolchain.
+- Every binary must be registered in [docs/PROVENANCE.md](docs/PROVENANCE.md) with its SHA-256 hash, build command, and pinned toolchain version.
+- `scripts/guardrails.sh` validates that no unregistered binaries or forbidden key/crypto patterns exist in the repository.
+
+---
+
+## 5. AI Assistance Disclosure
+
+The use of AI-assisted coding tools (e.g. Claude, GitHub Copilot, Codex) is permitted under strict conditions:
+- **Mandatory Disclosure**: Disclose in your pull request description which AI tool or model was used and what role it played (or state "None").
+- **Clean-Room Responsibility**: You are personally responsible for everything you commit. Never ask an AI model to summarize, translate, or reproduce code from other Switch emulators.
+- **Understanding**: You must thoroughly understand and be able to explain any code generated with AI assistance.
+
+---
+
+## 6. Pre-Submission Checks
+
+Before opening a pull request, run all formatting, linting, test, and guardrail checks locally:
+
 ```sh
+# 1. Format check
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+
+# 2. Strict Clippy check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+
+# 3. Test suite
+cargo test --workspace --locked
+
+# 4. Guardrails self-test and full scan
+scripts/guardrails.sh --self-test
 scripts/guardrails.sh
 ```
-Describe what you ran and what you did not.
+
+In your pull request, explicitly state which commands you ran and confirm that they passed without warnings or errors.

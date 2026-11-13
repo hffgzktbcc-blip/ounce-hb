@@ -14,19 +14,22 @@ ounce-core run-nro <staged copy of the .nro> --present=headless [guest args]
 - **Input:** the `.nro` is copied to a private temporary file after it passes `classify`, so the
   program that runs is the validated one. The copy is removed after the run.
 - **Output:** the exit status, stdout and stderr are captured and returned as a typed result.
-  `ounce-hb` prints the captured stdout and stderr, then exits with ounce-core's exit code.
-- **Time limit:** 60 seconds. The process is killed when the limit passes, and the run fails with
-  a timeout error.
+  `ounce-hb` prints the captured stdout and stderr, then exits with its own documented exit code for how the run stopped ([DIAGNOSIS.md](DIAGNOSIS.md)), not ounce-core's.
+- **Time limit:** 60 seconds by default (`OUNCE_HB_TIMEOUT_SECS` changes it). The process is killed when the limit
+  passes, and the run fails with a timeout error (exit 4).
 - **Guest arguments:** an argument starting with `-` is refused. ounce-core's `run-nro` silently
   drops those, so passing them through would hide the change.
 
 ### What the exit code means
 
-The exit code is ounce-core's process status, not the guest's return value:
+The ounce-hb exit code says how the run stopped; it is not ounce-core's process status and not the guest's return
+value. The full list is in [DIAGNOSIS.md](DIAGNOSIS.md). In short:
 
-- `0`: the program exited through the loader's exit path (`svcExitProcess`). In a libnx program
-  this is so whatever `main` returns: the `hello` fixture returned `0xBAD0008` and still exited 0.
-- `1`: ounce-core stopped early, for example on a load error or an unimplemented instruction.
+- `0`: the program exited through the loader's exit path (`svcExitProcess`). In a libnx program this is so
+  whatever `main` returns: the `hello` fixture returned `0xBAD0008` and still exited 0.
+- `10` to `17`: ounce-core stopped early in a named way (unimplemented instruction, memory fault, svcBreak, unhandled
+  SVC, CPU error, budget exhausted, loader error).
+- `1`: ounce-core stopped in a way ounce-hb does not recognise; the raw output is printed unchanged.
 
 A guest that wants to report a result must print it. For example, the `hello` fixture in ounce-core
 writes its result with `svcOutputDebugString`.

@@ -37,7 +37,7 @@ the project and must not author or review code for the corresponding subsystems 
 
 ## 4. Automated Enforcement
 
-Our repository includes automated guardrails in `scripts/guardrails.sh` which run in CI and reject:
+Our repository includes a best-effort lint, `scripts/guardrails.sh`, which runs in CI and rejects (it can be evaded, so review is still required):
 - Any binary file not registered in [PROVENANCE.md](../PROVENANCE.md).
 - Any attempt to commit `.keys`, `.firmware`, `.xci`, `.nsp`, or `.nca` files.
 - Code containing patterns associated with console keys or retail container decryption.

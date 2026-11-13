@@ -60,14 +60,25 @@ cargo run -- run path/to/application.nro -- input_file.bin output_file.bin
 
 ## Understanding Exit Codes
 
-ounce-hb communicates results via standard process exit codes:
+Every outcome has its own exit code, so scripts can tell categories apart. The full, authoritative list with
+what each category means is [DIAGNOSIS.md](../DIAGNOSIS.md); this table is the same contract.
 
 | Code | Meaning |
 |---|---|
-| `0` | Guest program ran to completion and exited with status 0 |
-| `1` | Guest program returned exit code 1 or was terminated by a signal |
-| `2` | Bad command invocation, file unreadable, or out-of-scope input (NSP, XCI, NCA, NPDM) |
-| `3` | Runner error (missing `ounce-core` binary, 60s timeout, unsupported argument, or NSO kind) |
+| `0` | Guest program exited normally (svcExitProcess) |
+| `1` | ounce-core stopped in a way ounce-hb does not recognise (raw output is printed unchanged) |
+| `2` | Bad CLI invocation, file unreadable, out-of-scope input (e.g. NSP, XCI, NCA, NPDM, or unrecognized magic), a guest argument starting with `-`, guest arguments longer than 16 KiB together ([ounce-core #418](https://github.com/hffgzktbcc-blip/ounce-core/issues/418)), a malformed `OUNCE_HB_TIMEOUT_SECS`, or an unsupported NSO kind |
+| `3` | ounce-core binary missing or not found |
+| `4` | Execution timeout (ounce-core killed after 60 seconds, or `OUNCE_HB_TIMEOUT_SECS`) |
+| `5` | ounce-hb could not start, wait on, or stage for ounce-core (host I/O error) |
+| `10` | Unimplemented instruction in ounce-core |
+| `11` | Memory access fault |
+| `12` | Other CPU error reported by ounce-core |
+| `13` | Guest called svcBreak |
+| `14` | Guest called a system service ounce-core does not provide |
+| `15` | CPU halted |
+| `16` | Instruction budget exhausted before the guest exited |
+| `17` | ounce-core could not load the program (loader error) |
 
 ---
 

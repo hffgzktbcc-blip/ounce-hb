@@ -3,7 +3,7 @@
   Target: ARMv8.5-A AArch64 (PAC + BTI) | Horizon OS 64-bit Microkernel
 ============================================================
 
-[Loader] Reading package/executable: /private/tmp/claude-501/-Users-nathanaelgovender-orca-workspaces-ounce-hb-hb-diagnose/0f8e92ed-ed4e-448d-a028-fd3293e2da10/scratchpad/killcap/tmp/ounce-hb-run-56740-1794551585108307000-0/program.nro
+[Loader] Reading package/executable: /tmp/ounce-hb-run-REDACTED/program.nro
 [BootLoader] Successfully loaded package:
   Format      : NRO0
   Title ID    : 0x0000000000000000

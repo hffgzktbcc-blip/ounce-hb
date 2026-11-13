@@ -23,16 +23,16 @@ reuse one.
 |---|---|---|
 | `0` | clean exit | The guest reached svcExitProcess and ounce-core exited `0`. |
 | `1` | unrecognised | ounce-core stopped in a way this file does not list. Its output is printed unchanged and nothing is inferred from it. Also used when ounce-core was killed by a signal with no recognised line. |
-| `2` | refused | The request was refused before ounce-core ran: a guest argument starting with `-`, an unsupported NSO kind, or an input that is not an unencrypted NRO (also `2` for the input checks that run before this step). |
+| `2` | refused | The request was refused before ounce-core ran: a guest argument starting with `-`, an unsupported NSO kind, a malformed `OUNCE_HB_TIMEOUT_SECS`, or an input that is not an unencrypted NRO (also `2` for the input checks that run before this step). |
 | `3` | core missing | No ounce-core binary: `OUNCE_CORE_BIN` is unset or wrong, and no `ounce-core` is on `PATH`. |
-| `4` | timeout | ounce-core ran past the 60-second limit and was killed. |
+| `4` | timeout | ounce-core ran past the wall-clock limit (60 seconds, or `OUNCE_HB_TIMEOUT_SECS`) and was killed. |
 | `5` | host I/O | ounce-hb could not write its private copy of the program, or could not start or wait on ounce-core. |
 | `10` | unimplemented instruction | The CPU met a word ounce-core does not implement. The message gives the word and the address. |
 | `11` | memory fault | ounce-core rejected a memory access. The message keeps ounce-core's wording and, when present, the address. |
 | `12` | CPU error | Any other `[VM Error]` line, such as a breakpoint or a branch-target exception. |
 | `13` | svcBreak | The guest called svcBreak. The message gives the break PC and result when ounce-core printed them. |
 | `14` | unhandled SVC | The guest called a system service ounce-core does not provide. |
-| `15` | CPU halted | ounce-core printed `CPU Halted`. |
+| `15` | CPU halted | ounce-core printed `CPU Halted`. No homebrew NRO reaches this line in v0.8.0; see [Evidence status](#evidence-status). |
 | `16` | budget exhausted | The instruction budget ran out before the guest exited. The message suggests `OUNCE_NRO_BUDGET`, which ounce-hb passes through to ounce-core. |
 | `17` | loader error | ounce-core could not load the file. |
 
@@ -71,10 +71,67 @@ ounce-core's `run-nro` does not report a guest exit status. `svcExitProcess` car
   cannot be fully ruled out from the output alone.
 - Another ounce-core version may word these lines differently. Such runs are reported as unrecognised
   with the raw output, not explained.
-- The timeout category (`4`) is decided by ounce-hb's own wall-clock limit, not by ounce-core. The
-  unit and integration tests cover that mapping. A real timeout run was not captured for this document:
-  the synthetic infinite loop reached the default instruction budget (50 million) within about one
-  second, so it reported category `16`, not `4`.
+- The timeout category (`4`) is decided by ounce-hb's own wall-clock limit, not by ounce-core. A
+  synthetic infinite loop run with `OUNCE_NRO_BUDGET` raised reaches the limit and exits `4`, and the
+  ounce-core child is killed and reaped before ounce-hb returns. Without the raised budget the default
+  50 million instructions run out within about a second, so that loop reports `16`, not `4`.
+
+## Timeout
+
+`ounce-hb run` kills ounce-core after 60 seconds by default. The limit can be changed with
+`OUNCE_HB_TIMEOUT_SECS`, a number of seconds greater than 0 and at most 86400 (one day). Surrounding
+spaces are allowed. Any other value, including `nan`, `inf`, `0`, a negative number or text, is refused
+with exit code `2` before ounce-core is looked for. The variable is not silently replaced by the default.
+The limit applies to ounce-core's whole run, including startup.
+
+The end-to-end test `wall_clock_timeout_exits_4_and_kills_ounce_core` (`tests/ounce_core_e2e.rs`) runs a
+spinning NRO with `OUNCE_HB_TIMEOUT_SECS=2` and `OUNCE_NRO_BUDGET` set to 10^11, so only the wall-clock
+limit can stop it. It asserts exit `4` and then checks that no process still has the run's private
+directory in its command line.
+
+## Evidence status
+
+Each exit code, and whether a real run backs it. "Real run" means `ounce-hb run` was executed against
+the ounce-core v0.8.0 binary, or the captured ounce-core output from such a run is in the fixtures.
+
+| Code | Category | Backed by a real run? | Where |
+|---|---|---|---|
+| `0` | clean exit | Yes | `clean_guest_exit_is_zero_with_no_explanation`; fixture `clean` |
+| `1` | unrecognised | Not by an ounce-hb run. The fixture `usage` is real ounce-core text, but for a command ounce-hb never issues. The branch for a signal kill is covered only by a unit test using a shell script. | fixture `usage`; 300 random-code NROs with valid headers gave only unimplemented-instruction (255) and memory-fault (45) stops, with no panic and no unrecognised output |
+| `2` | refused | Yes (real `ounce-hb` run, no ounce-core output involved) | `refused_guest_argument_exits_2_without_core`, `invalid_timeout_override_exits_2_without_core` |
+| `3` | core missing | Yes (real `ounce-hb` run) | `tests/cli.rs` `valid_nro_without_core_binary_reports_it` |
+| `4` | timeout | Yes | `wall_clock_timeout_exits_4_and_kills_ounce_core` |
+| `5` | host I/O | Yes (spawn of a non-executable file fails) | `ounce_core_that_cannot_be_started_exits_5` |
+| `10` | unimplemented instruction | Yes | `unimplemented_instruction_exits_10`; fixture `unimpl` |
+| `11` | memory fault | Yes | `memory_fault_exits_11`; fixture `memfault` |
+| `12` | CPU error | Yes (`brk #0` gives `BRK #0x0 breakpoint hit`) | `cpu_error_from_brk_exits_12` |
+| `13` | svcBreak | Yes | `svc_break_exits_13`; fixture `svc_break` |
+| `14` | unhandled SVC | Yes | `unhandled_svc_exits_14`; fixture `unhandled_svc` |
+| `15` | CPU halted | **No. Not reachable from a homebrew NRO in v0.8.0.** See below. | source only |
+| `16` | budget exhausted | Yes | `exhausted_budget_exits_16`; fixture `budget` |
+| `17` | loader error | Yes | `loader_error_exits_17`; fixture `loader_error` |
+
+### Why `15` cannot be captured
+
+ounce-core v0.8.0 (checkout at commit `cf199bc`) defines the variant and prints the line, but nothing
+constructs it:
+
+- `src/cpu/interpreter.rs:44` declares `StepResult::Halt(String)` ("Process exited or CPU halted").
+- The only mentions of `Halt(` in `src/` and `crates/` are consumers: `src/main.rs:831` (which prints
+  `[VM] CPU Halted:` at line 832), `src/cpu/interpreter.rs:147`, `src/cpu/nce.rs:335`,
+  `src/loader/corpus_runner.rs:359`, `src/loader/hbx_frame.rs:82`, `src/loader/init.rs:56`,
+  `src/linux/runner.rs:138`, `src/kernel/svc.rs:1519`, `src/loader/fixture_tests.rs:141` and
+  `crates/ounce-learn/src/lib.rs:58`.
+- `Cpu::step` (`src/cpu/interpreter.rs:139`) only records the result and passes it on. `step_inner`
+  (`src/cpu/interpreter.rs:153`) returns `Continue`, `Svc` or an error for each instruction. No
+  instruction path returns `Halt`.
+- The halt-like instruction `HLT` (`0xD4400000`) is not decoded. A real run gives
+  `[VM Error] Unimplemented instruction 0xD4400000 at PC: ...` (exit `10`).
+- `CpuError::Halted` (`src/cpu/interpreter.rs:28`) is also never constructed.
+
+The `[VM] CPU Halted:` line is still recognised, because main.rs prints it. If a later ounce-core
+constructs `Halt`, its runs will be explained as category `15`. Until a run shows that, `15` is parser
+logic with no captured output behind it.
 
 ## Evidence
 
@@ -85,3 +142,9 @@ directory writes the small NRO inputs. The NRO files are generated and not commi
 `tests/diagnose.rs` checks the classification of each fixture, the exit codes, the wording of each
 explanation, and runs the real `ounce-hb` binary against a stand-in ounce-core that replays each
 capture.
+
+`tests/ounce_core_e2e.rs` runs the real `ounce-hb` binary against the real ounce-core CLI. It generates
+each NRO inside the test and checks the exit code and category for each code above that a program can
+reach. It skips with a SKIPPED line when no ounce-core binary is configured. CI
+(`.github/workflows/ounce-core-e2e.yml`) downloads the v0.8.0 release asset for Linux x86_64 and macOS
+arm64, checks its sha256 against the release's `SHA256SUMS`, and fails if any test was skipped.

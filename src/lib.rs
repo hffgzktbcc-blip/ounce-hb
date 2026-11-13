@@ -94,6 +94,8 @@ pub enum RunError {
     /// A guest argument starting with '-' that ounce-core would silently drop.
     UnsupportedArg(String),
     UnsupportedKind(Kind),
+    /// `OUNCE_HB_TIMEOUT_SECS` is set to something other than a usable number of seconds.
+    BadTimeout(String),
 }
 
 impl fmt::Display for RunError {
@@ -107,7 +109,7 @@ impl fmt::Display for RunError {
             RunError::Timeout(limit) => write!(
                 f,
                 "ounce-core did not finish within {} s and was killed. The program may be stuck.",
-                limit.as_secs()
+                limit.as_secs_f64()
             ),
             RunError::Io(why) => write!(f, "could not run ounce-core: {why}"),
             RunError::UnsupportedArg(arg) => write!(
@@ -120,18 +122,52 @@ impl fmt::Display for RunError {
                     "{k:?} execution is not supported yet; only NRO is supported."
                 )
             }
+            RunError::BadTimeout(why) => write!(f, "{why}"),
         }
     }
 }
 
 impl std::error::Error for RunError {}
 
-/// Run a validated image with the default backend (the ounce-core CLI, see [`backend`]).
+/// Environment variable that overrides the wall-clock limit, in seconds. Unset means
+/// [`DEFAULT_TIMEOUT`]. A value that is not a number greater than 0 and at most [`MAX_TIMEOUT_SECS`]
+/// is refused (exit code 2), it is never silently replaced by the default.
+pub const TIMEOUT_ENV: &str = "OUNCE_HB_TIMEOUT_SECS";
+
+/// Largest accepted `OUNCE_HB_TIMEOUT_SECS`: one day.
+pub const MAX_TIMEOUT_SECS: f64 = 86_400.0;
+
+/// Reads [`TIMEOUT_ENV`]. Unset means [`DEFAULT_TIMEOUT`].
+pub fn timeout_from_env() -> Result<Duration, RunError> {
+    match std::env::var(TIMEOUT_ENV) {
+        Ok(value) => parse_timeout(&value),
+        Err(std::env::VarError::NotPresent) => Ok(DEFAULT_TIMEOUT),
+        Err(std::env::VarError::NotUnicode(_)) => Err(RunError::BadTimeout(format!(
+            "{TIMEOUT_ENV} is not valid text. Set it to a number of seconds greater than 0 and at most {MAX_TIMEOUT_SECS}, or unset it."
+        ))),
+    }
+}
+
+/// Parses a timeout override in seconds. Surrounding spaces are allowed.
+pub fn parse_timeout(value: &str) -> Result<Duration, RunError> {
+    match value.trim().parse::<f64>() {
+        Ok(secs) if secs.is_finite() && secs > 0.0 && secs <= MAX_TIMEOUT_SECS => {
+            Ok(Duration::from_secs_f64(secs))
+        }
+        _ => Err(RunError::BadTimeout(format!(
+            "{TIMEOUT_ENV} must be a number of seconds greater than 0 and at most {MAX_TIMEOUT_SECS}, got {value:?}."
+        ))),
+    }
+}
+
+/// Run a validated image with the default backend (the ounce-core CLI, see [`backend`]). The limit
+/// is [`DEFAULT_TIMEOUT`] unless [`TIMEOUT_ENV`] overrides it.
 pub fn run(kind: Kind, bytes: &[u8], args: &[String]) -> Result<RunOutput, RunError> {
     if kind != Kind::Nro {
         return Err(RunError::UnsupportedKind(kind));
     }
-    let backend = Subprocess::new(locate_core()?, DEFAULT_TIMEOUT);
+    let timeout = timeout_from_env()?;
+    let backend = Subprocess::new(locate_core()?, timeout);
     run_with(&backend, kind, bytes, args)
 }
 
@@ -189,6 +225,19 @@ mod tests {
         assert_eq!(classify(&[0; 4]), Err(Rejection::TooSmall));
         assert_eq!(classify(&with(0, b"META", 0x40)), Err(Rejection::Npdm));
         assert_eq!(classify(&[0xAA; 0x200]), Err(Rejection::Unrecognized));
+    }
+
+    #[test]
+    fn timeout_override_accepts_only_positive_seconds_up_to_a_day() {
+        assert_eq!(parse_timeout("2"), Ok(Duration::from_secs(2)));
+        assert_eq!(parse_timeout(" 1.5 "), Ok(Duration::from_millis(1500)));
+        assert_eq!(parse_timeout("86400"), Ok(Duration::from_secs(86_400)));
+        for bad in ["0", "-1", "nan", "inf", "1e9", "", "soon", "86400.5"] {
+            assert!(
+                matches!(parse_timeout(bad), Err(RunError::BadTimeout(m)) if m.contains(TIMEOUT_ENV)),
+                "{bad:?} should be refused"
+            );
+        }
     }
 
     #[test]

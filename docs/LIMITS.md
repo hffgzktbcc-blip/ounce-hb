@@ -27,7 +27,7 @@ As of Milestone M0:
   - Executes validated NRO files via an external `ounce-core` binary invoked in headless mode (`--present=headless`).
   - Resolves `ounce-core` via the `OUNCE_CORE_BIN` environment variable or the host system's `PATH`.
   - Captures and forwards guest stdout, stderr, and exit status.
-  - Enforces a 60-second wall-clock timeout on guest runs.
+  - Enforces a 60-second wall-clock timeout on guest runs. `OUNCE_HB_TIMEOUT_SECS` overrides it (greater than 0, at most 86400); see [DIAGNOSIS.md](DIAGNOSIS.md#timeout).
   - Refuses guest arguments starting with `-` to avoid silent argument dropping by upstream `ounce-core`.
   - Explains abnormal stops (unimplemented instruction, memory fault, svcBreak, unhandled SVC, budget, loader error, timeout, missing ounce-core) with a documented exit code per category; see [DIAGNOSIS.md](DIAGNOSIS.md).
 - **Quality & Safety Invariants**:

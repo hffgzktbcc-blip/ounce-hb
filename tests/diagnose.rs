@@ -1,6 +1,6 @@
-//! Stop classification and the `ounce-hb run` exit codes, tested against real ounce-core v0.8.0
-//! output. The fixtures in tests/fixtures/ounce-core-output are captures; NOTES.md there says how each
-//! was produced.
+//! Stop classification and the `ounce-hb run` exit codes, tested against real ounce-core output
+//! (v0.8.0 for the plain cases, v0.8.1 for the spoof cases). The fixtures in
+//! tests/fixtures/ounce-core-output are captures; NOTES.md there says how each was produced.
 
 #[cfg(unix)]
 use std::path::{Path, PathBuf};
@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use ounce_hb::RunError;
 use ounce_hb::RunOutput;
-use ounce_hb::diagnose::{StopReason, from_error, from_output};
+use ounce_hb::diagnose::{EXCERPT_BYTES, StopReason, from_error, from_output};
 
 /// One capture: stdout, stderr and the exit status ounce-core returned.
 struct Capture {
@@ -37,6 +37,7 @@ fn classify(c: &Capture) -> StopReason {
         exit_code: Some(c.exit),
         stdout: c.stdout.to_string(),
         stderr: c.stderr.to_string(),
+        ..RunOutput::default()
     })
 }
 
@@ -114,10 +115,100 @@ fn output_that_is_not_a_stop_line_is_unrecognised_and_kept_raw() {
         classify(&c),
         StopReason::Unrecognised {
             exit_code: Some(2),
-            stdout: c.stdout.to_string(),
-            stderr: c.stderr.to_string(),
+            stdout_tail: c.stdout.to_string(),
+            stderr_tail: c.stderr.to_string(),
         }
     );
+}
+
+/// Finding 5: the unrecognised reason keeps a bounded excerpt, not a copy of the whole output.
+#[test]
+fn unrecognised_keeps_only_the_end_of_each_stream() {
+    let stdout = "x".repeat(3 * EXCERPT_BYTES) + "END-OUT";
+    let stderr = "y".repeat(3 * EXCERPT_BYTES) + "END-ERR";
+    let out = RunOutput {
+        exit_code: Some(9),
+        stdout: stdout.clone(),
+        stderr: stderr.clone(),
+        ..RunOutput::default()
+    };
+    match from_output(&out) {
+        StopReason::Unrecognised {
+            exit_code,
+            stdout_tail,
+            stderr_tail,
+        } => {
+            assert_eq!(exit_code, Some(9));
+            assert_eq!(stdout_tail.len(), EXCERPT_BYTES);
+            assert_eq!(stderr_tail.len(), EXCERPT_BYTES);
+            assert!(stdout_tail.ends_with("END-OUT"));
+            assert!(stderr_tail.ends_with("END-ERR"));
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+// ---- Finding 6: guest text printed with svcOutputDebugString must not change the category. The
+// captures are real ounce-core v0.8.1 output for the spoof programs in make_nros.py.
+
+#[test]
+fn guest_cannot_forge_a_budget_stop_before_a_real_unhandled_svc() {
+    // The guest prints a budget line, then calls svc #0x7E. The old parser took the first match.
+    assert_eq!(
+        classify(&capture!("spoof_budget")),
+        StopReason::UnhandledSvc { id: 0x7E }
+    );
+}
+
+#[test]
+fn guest_cannot_hide_a_fault_behind_a_printed_clean_line() {
+    // The guest prints the clean-exit line, then faults. The real line is on stderr.
+    assert_eq!(
+        classify(&capture!("spoof_clean")),
+        StopReason::MemoryFault {
+            message: "Unmapped memory access at virtual address: 0x0000000000000031".to_string(),
+            address: Some(0x31),
+        }
+    );
+}
+
+#[test]
+fn guest_cannot_make_a_clean_run_fail_by_printing_a_fault_line() {
+    // A `[VM Error]` line on stdout is guest text; ounce-core prints its own on stderr.
+    assert_eq!(
+        classify(&capture!("spoof_fault_then_clean")),
+        StopReason::CleanExit
+    );
+}
+
+#[test]
+fn guest_cannot_plant_break_details() {
+    // Fake svcBreak lines with PC 0xDEADBEEF come first; the real break follows them.
+    assert_eq!(
+        classify(&capture!("spoof_break")),
+        StopReason::Break {
+            pc: Some(0x0000_0000_8000_0098),
+            result: None,
+        }
+    );
+}
+
+#[test]
+fn stderr_error_lines_are_not_taken_from_stdout() {
+    // Only ounce-core writes stderr. The same text on stdout with a failing exit and no real stop
+    // line is unrecognised, not a CPU error.
+    let out = RunOutput {
+        exit_code: Some(1),
+        stdout: "[VM Error] BRK #0x0 breakpoint hit\n".to_string(),
+        ..RunOutput::default()
+    };
+    assert!(matches!(from_output(&out), StopReason::Unrecognised { .. }));
+    let out = RunOutput {
+        exit_code: Some(1),
+        stderr: "[VM Error] BRK #0x0 breakpoint hit\n".to_string(),
+        ..RunOutput::default()
+    };
+    assert!(matches!(from_output(&out), StopReason::CpuError { .. }));
 }
 
 #[test]
@@ -125,7 +216,7 @@ fn exit_zero_without_the_clean_line_is_not_called_clean() {
     let out = RunOutput {
         exit_code: Some(0),
         stdout: "something else entirely\n".to_string(),
-        stderr: String::new(),
+        ..RunOutput::default()
     };
     assert!(matches!(
         from_output(&out),
@@ -142,7 +233,7 @@ fn clean_line_with_a_failing_exit_is_not_called_clean() {
     let out = RunOutput {
         exit_code: Some(1),
         stdout: c.stdout.to_string(),
-        stderr: String::new(),
+        ..RunOutput::default()
     };
     assert!(matches!(from_output(&out), StopReason::Unrecognised { .. }));
 }
@@ -152,7 +243,7 @@ fn killed_by_signal_is_unrecognised() {
     let out = RunOutput {
         exit_code: None,
         stdout: "[VM] Execution budget reached (5 instructions).\n".to_string(),
-        stderr: String::new(),
+        ..RunOutput::default()
     };
     assert!(matches!(
         from_output(&out),
@@ -196,6 +287,10 @@ fn every_fixture_category_has_a_documented_exit_code() {
         (classify(&capture!("unhandled_svc")), 14),
         (classify(&capture!("budget")), 16),
         (classify(&capture!("loader_error")), 17),
+        (classify(&capture!("spoof_budget")), 14),
+        (classify(&capture!("spoof_clean")), 11),
+        (classify(&capture!("spoof_fault_then_clean")), 0),
+        (classify(&capture!("spoof_break")), 13),
     ];
     for (reason, code) in cases {
         assert_eq!(reason.exit_code(), code, "{reason:?}");
@@ -322,6 +417,27 @@ mod end_to_end {
             )),
             "{err}"
         );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Finding 6, through the real binary: the replayed v0.8.1 spoof captures get the real category.
+    #[test]
+    fn spoofed_stop_lines_get_the_real_category() {
+        let dir = work_dir("spoof");
+        for (case, code) in [
+            ("spoof_budget", 14),
+            ("spoof_clean", 11),
+            ("spoof_fault_then_clean", 0),
+            ("spoof_break", 13),
+        ] {
+            let out = run(&dir, case, &[]);
+            let err = String::from_utf8_lossy(&out.stderr).into_owned();
+            assert_eq!(out.status.code(), Some(code), "{case}: {err}");
+            if code == 13 {
+                assert!(err.contains("Break PC: 0x0000000080000098"), "{err}");
+                assert!(!err.contains("DEADBEEF"), "{err}");
+            }
+        }
         let _ = fs::remove_dir_all(dir);
     }
 

@@ -1,6 +1,9 @@
 name: ounce-core-e2e
-# Runs the end-to-end tests against the real ounce-core v0.8.0 release binary on Linux, macOS and
+# Runs the end-to-end tests against the real ounce-core v0.8.1 release binary on Linux, macOS and
 # Windows. Kept separate from ci.yml so that a change here cannot touch the main check job.
+# The sha256 of each asset is pinned here (copied from the release's SHA256SUMS on 2026-11-13) and
+# also checked against the SHA256SUMS downloaded with it, so neither a changed asset nor a changed
+# SHA256SUMS passes.
 on:
   push:
     branches: [main]
@@ -11,7 +14,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  OUNCE_CORE_VERSION: v0.8.0
+  OUNCE_CORE_VERSION: v0.8.1
 
 jobs:
   e2e:
@@ -24,12 +27,15 @@ jobs:
           - os: ubuntu-latest
             name: linux-x86_64
             asset: ounce-core-linux-x86_64.tar.gz
+            sha256: d55af1ad1dd3f5f331e20c696e49e37f93a7ce1d4e93a8c33122310aa2ce0839
           - os: macos-latest
             name: macos-arm64
             asset: ounce-core-macos-arm64.tar.gz
+            sha256: 5d332a3a16fd0aa12525b6c5a19035b518e60637782f6cbe9da8aa6c6a2214c8
           - os: windows-latest
             name: windows-x86_64
             asset: ounce-core-windows-x86_64.zip
+            sha256: 4ea77d175f3613a3c1c98264a1ec38a5a405973f2d5ba30d6ed812fb45457b41
     defaults:
       run:
         shell: bash
@@ -46,6 +52,7 @@ jobs:
       - name: Download ounce-core and verify its sha256
         env:
           ASSET: ${{ matrix.asset }}
+          PINNED: ${{ matrix.sha256 }}
         run: |
           set -euo pipefail
           base="https://github.com/hffgzktbcc-blip/ounce-core/releases/download/${OUNCE_CORE_VERSION}"
@@ -56,6 +63,10 @@ jobs:
           expected=$(awk -v f="$ASSET" '$2 == f { print $1 }' "$dir/SHA256SUMS")
           if [ -z "$expected" ]; then
             echo "SHA256SUMS has no entry for $ASSET" >&2
+            exit 1
+          fi
+          if [ "$expected" != "$PINNED" ]; then
+            echo "SHA256SUMS lists $expected for $ASSET, but this workflow pins $PINNED" >&2
             exit 1
           fi
           # Hash from stdin: with a file name, GNU sha256sum prefixes a backslash to the line when the

@@ -12,9 +12,9 @@ use std::time::Duration;
 pub mod backend;
 pub mod diagnose;
 
-use backend::Staged;
 pub use backend::{
-    Backend, CORE_BIN_ENV, DEFAULT_TIMEOUT, RunOutput, Subprocess, find_core, locate_core,
+    Backend, CORE_BIN_ENV, DEFAULT_TIMEOUT, HEAD_BYTES, MAX_CAPTURED_BYTES, PIPE_CLOSE_GRACE,
+    RunOutput, Staged, Subprocess, TAIL_BYTES, find_core, locate_core, truncation_marker,
 };
 
 /// What a file turned out to be.
@@ -105,8 +105,10 @@ pub enum RunError {
 
 /// Largest combined guest-argument length ounce-hb passes to ounce-core. Above it, ounce-core v0.8.0
 /// writes the argument strings over the program in memory (ounce-core #418: the config block at
-/// 0x7FFF0000 runs into the NRO at 0x80000000 once the strings pass about 62,839 bytes). This limit is
-/// well below that. Remove it only when ounce-core #418 is fixed upstream.
+/// 0x7FFF0000 runs into the NRO at 0x80000000 once the strings pass about 62,839 bytes). ounce-core
+/// v0.8.1 refuses an argument string (program path and guest arguments, joined by spaces) over
+/// 62,855 bytes itself with a `[Loader Error]`. This limit stays well below both, so the refusal
+/// comes from ounce-hb with a clear message before any ounce-core process starts.
 pub const MAX_GUEST_ARGS_BYTES: usize = 16 * 1024;
 
 /// Combined guest-argument length, counted as the bytes of each argument plus one NUL terminator, as
@@ -130,7 +132,7 @@ impl fmt::Display for RunError {
             RunError::CoreNotFound(why) => write!(
                 f,
                 "ounce-core binary not found: {why}. Set OUNCE_CORE_BIN to the binary, or put it on PATH \
-                 (build the ounce-core v0.8.0 CLI). Details: docs/OUNCE_CORE_API_NEEDS.md."
+                 (build the ounce-core v0.8.1 CLI). Details: docs/OUNCE_CORE_API_NEEDS.md."
             ),
             RunError::Timeout(limit) => write!(
                 f,
@@ -153,7 +155,8 @@ impl fmt::Display for RunError {
                 f,
                 "the guest arguments are {bytes} bytes together, above the {MAX_GUEST_ARGS_BYTES}-byte limit. \
                  ounce-core v0.8.0 overwrites the program in memory with arguments that long (ounce-core #418), \
-                 so the run is refused. Shorten the arguments."
+                 and v0.8.1 refuses an argument string over 62,855 bytes itself, so the run is refused here first. \
+                 Shorten the arguments."
             ),
         }
     }
@@ -216,7 +219,7 @@ pub fn run_with<B: Backend>(
         Kind::Nro => {
             check_guest_args(args)?;
             let staged = Staged::create(bytes)?;
-            backend.run_nro(staged.path(), args)
+            backend.run_nro(&staged, args)
         }
         other => Err(RunError::UnsupportedKind(other)),
     }
@@ -286,16 +289,16 @@ mod tests {
     fn run_with_passes_the_staged_nro_to_the_backend() {
         struct Echo;
         impl Backend for Echo {
-            fn run_nro(
-                &self,
-                nro: &std::path::Path,
-                args: &[String],
-            ) -> Result<RunOutput, RunError> {
-                let stdout = format!("{}|{}", std::fs::read(nro).unwrap().len(), args.join(","));
+            fn run_nro(&self, program: &Staged, args: &[String]) -> Result<RunOutput, RunError> {
+                let stdout = format!(
+                    "{}|{}",
+                    std::fs::read(program.path()).unwrap().len(),
+                    args.join(",")
+                );
                 Ok(RunOutput {
                     exit_code: Some(0),
                     stdout,
-                    stderr: String::new(),
+                    ..RunOutput::default()
                 })
             }
         }

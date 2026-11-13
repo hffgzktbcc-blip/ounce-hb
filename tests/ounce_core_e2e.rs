@@ -4,7 +4,7 @@
 //! The programs are small NROs built here (not committed). They use the same layout as the synthetic
 //! helper in tests/ounce_core_run.rs. Tests that need ounce-core skip with a SKIPPED line when
 //! `OUNCE_CORE_BIN` and PATH give no binary, and fail if `OUNCE_CORE_BIN` is set but unusable. CI sets
-//! `OUNCE_CORE_BIN` to the pinned v0.8.0 release (.github/workflows/ounce-core-e2e.yml) on Linux,
+//! `OUNCE_CORE_BIN` to the pinned v0.8.1 release (.github/workflows/ounce-core-e2e.yml) on Linux,
 //! macOS and Windows. The only platform-specific code is `cfg`-gated: how the process list is read
 //! and how a process is killed (`ps`/`pkill` on unix, PowerShell on Windows), the signal wording in
 //! the SIGKILL test, and the file used for the "cannot be started" test.
@@ -18,12 +18,44 @@ use ounce_hb::{CORE_BIN_ENV, locate_core};
 
 const MOV_W0_0: u32 = 0x5280_0000; // mov w0, #0
 const SVC_EXIT_PROCESS: u32 = 0xD400_00E1; // svc #7 (svcExitProcess)
+const SVC_OUTPUT_DEBUG_STRING: u32 = 0xD400_04E1; // svc #0x27 (x0 = address, x1 = length)
+const SVC_BREAK: u32 = 0xD400_04C1; // svc #0x26
+const SVC_UNHANDLED: u32 = 0xD400_0FC1; // svc #0x7E
+const LDR_X0_X1: u32 = 0xF940_0020; // ldr x0, [x1]
+const ADD_X1_SP_0: u32 = 0x9100_03E1; // add x1, sp, #0
+const MOV_X2_4: u32 = 0xD280_0082; // mov x2, #4
 const SPIN: u32 = 0x1400_0000; // b .
+
+/// `adr x0, .+offset`.
+fn adr_x0(offset: u32) -> u32 {
+    0x1000_0000 | ((offset & 3) << 29) | (((offset >> 2) & 0x7FFFF) << 5)
+}
+
+/// `mov x1, #imm` (imm below 65536).
+fn mov_x1(imm: u32) -> u32 {
+    0xD280_0001 | (imm << 5)
+}
 
 /// An NRO0 whose code is `words` at 0x80. `text_size_override` writes a text size that runs past the
 /// end of the file, which ounce-core rejects at load time.
 fn nro(words: &[u32], text_size_override: Option<u32>) -> Vec<u8> {
-    let text: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+    nro_with_data(words, b"", text_size_override)
+}
+
+/// A program that prints `message` with svcOutputDebugString, then runs `then`. The message sits
+/// right after the code; this is the layout of the spoof programs in
+/// tests/fixtures/ounce-core-output/make_nros.py, byte for byte.
+fn spoof(message: &[u8], then: &[u32]) -> Vec<u8> {
+    let mut words = vec![0, mov_x1(message.len() as u32), SVC_OUTPUT_DEBUG_STRING];
+    words.extend_from_slice(then);
+    words[0] = adr_x0(4 * words.len() as u32);
+    nro_with_data(&words, message, None)
+}
+
+/// Like [`nro`], with `data` after the code words.
+fn nro_with_data(words: &[u32], data: &[u8], text_size_override: Option<u32>) -> Vec<u8> {
+    let mut text: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+    text.extend_from_slice(data);
     let total = 0x80 + text.len();
     let mut b = vec![0u8; total];
     b[0x00..0x04].copy_from_slice(&0x1400_0020u32.to_le_bytes()); // b #0x80
@@ -267,6 +299,102 @@ fn loader_error_exits_17() {
         &[],
     );
     expect_stop(&out, 17, "could not load the program");
+    let _ = fs::remove_dir_all(dir);
+}
+
+// ---- Finding 6: a program can print text that looks like a stop line (svcOutputDebugString goes to
+// stdout as it is). The category must still be the real one. Reproduced from the adversarial
+// review's spoof programs against the real binary.
+
+#[test]
+fn guest_text_cannot_forge_a_stop_category() {
+    let Some(core) = core_bin("guest_text_cannot_forge_a_stop_category") else {
+        return;
+    };
+    let dir = work_dir("spoof-budget");
+    // Prints a budget line, then calls an unhandled SVC. The review saw 16 here; 14 is right.
+    let out = run_hb(
+        &dir,
+        &spoof(
+            b"[VM] Execution budget reached (1 instructions).\n",
+            &[SVC_UNHANDLED],
+        ),
+        &core,
+        &[],
+        &[],
+    );
+    expect_stop(&out, 14, "Ounce Core does not provide");
+    assert!(text(&out.stdout).contains("[VM] Execution budget reached (1 instructions)."));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn guest_text_cannot_hide_a_fault() {
+    let Some(core) = core_bin("guest_text_cannot_hide_a_fault") else {
+        return;
+    };
+    let dir = work_dir("spoof-clean");
+    // Prints the clean-exit line, then faults (x1 holds the message length, which is unmapped).
+    let out = run_hb(
+        &dir,
+        &spoof(
+            b"[VM] Process exited gracefully (svcExitProcess).\n",
+            &[LDR_X0_X1],
+        ),
+        &core,
+        &[],
+        &[],
+    );
+    expect_stop(&out, 11, "memory access that Ounce Core rejected");
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn guest_text_cannot_make_a_clean_run_fail() {
+    let Some(core) = core_bin("guest_text_cannot_make_a_clean_run_fail") else {
+        return;
+    };
+    let dir = work_dir("spoof-fault");
+    // Prints a fault line, then exits cleanly. The review saw 1 here; 0 is right.
+    let out = run_hb(
+        &dir,
+        &spoof(
+            b"[VM Error] Memory access violation: fake at 0xDEAD\n",
+            &[MOV_W0_0, SVC_EXIT_PROCESS],
+        ),
+        &core,
+        &[],
+        &[],
+    );
+    let err = text(&out.stderr);
+    assert_eq!(out.status.code(), Some(0), "stderr:\n{err}");
+    assert!(!err.contains("ounce-hb:"), "{err}");
+    assert!(text(&out.stdout).contains("[VM Error] Memory access violation: fake at 0xDEAD"));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn guest_text_cannot_plant_break_details() {
+    let Some(core) = core_bin("guest_text_cannot_plant_break_details") else {
+        return;
+    };
+    let dir = work_dir("spoof-break");
+    // Fake svcBreak lines with PC 0xDEADBEEF, then a real svcBreak. The real PC is the address after
+    // the svc: code starts at 0x80000080 and the svc is the sixth word.
+    let out = run_hb(
+        &dir,
+        &spoof(
+            b"[VM] Hit svcBreak: reason=0x0, info1=0x0, info2=0x0\n[VM] Break PC: 0x00000000DEADBEEF\n[VM] Break result: 0x00000000\n",
+            &[ADD_X1_SP_0, MOV_X2_4, SVC_BREAK],
+        ),
+        &core,
+        &[],
+        &[],
+    );
+    expect_stop(&out, 13, "svcBreak");
+    let err = text(&out.stderr);
+    assert!(err.contains("Break PC: 0x0000000080000098"), "{err}");
+    assert!(!err.contains("DEADBEEF"), "{err}");
     let _ = fs::remove_dir_all(dir);
 }
 

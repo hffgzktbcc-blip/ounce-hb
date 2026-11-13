@@ -32,6 +32,28 @@ and `<case>.exit`. Timing lines (`in 41.2 ms`, `MIPS`) vary between runs and the
 | `loader_error` | text size set past the end of the file | 1 | `[Loader Error] Image text segment exceeds file bounds (...)` on stderr |
 | `usage` | no NRO: `ounce-core run-nro --present=headless` | 2 | `error: 'run-nro' needs the path of a homebrew .nro file.` on stderr. Not something `ounce-hb run` can produce; kept as text ounce-core prints that the parser must not recognise |
 
+## Spoof programs (ounce-core v0.8.1)
+
+The `spoof_*` cases are real output of the ounce-core **v0.8.1** release binary for macOS arm64
+(`ounce-core-macos-arm64.tar.gz`, sha256
+`5d332a3a16fd0aa12525b6c5a19035b518e60637782f6cbe9da8aa6c6a2214c8`, checked against the release's
+`SHA256SUMS`), run on 2026-11-13 from this directory with the same command as above. Each program prints
+a line that looks like a stop line with `svcOutputDebugString` (which ounce-core writes to stdout as it
+is), then really stops another way. They are the adversarial review's reproductions for the
+classification (docs/DIAGNOSIS.md, "Guest text and the stop line"); `make_nros.py` writes them byte for
+byte.
+
+| Case | Program | Exit | What ounce-core printed | Right category |
+|---|---|---|---|---|
+| `spoof_budget` | prints `[VM] Execution budget reached (1 instructions).`, then `svc #0x7E` | 1 | the printed line, then the real `[VM] Stopping on unhandled SVC #0x7E.` on stdout; `[Horizon SVC]` on stderr | 14 |
+| `spoof_clean` | prints the clean-exit line, then `ldr x0,[x1]` with x1 unmapped | 1 | the printed line on stdout; the real `[VM Error] Memory access violation: ... 0x0000000000000031` on stderr | 11 |
+| `spoof_fault_then_clean` | prints `[VM Error] Memory access violation: fake at 0xDEAD`, then svcExitProcess | 0 | the printed line, then the real clean-exit line, both on stdout; stderr empty | 0 |
+| `spoof_break` | prints fake `[VM] Hit svcBreak` / `Break PC: 0x00000000DEADBEEF` / `Break result` lines, then a real svcBreak | 1 | the printed lines, then the real `[VM] Hit svcBreak`, `[VM] Break PC: 0x0000000080000098` and `Break result unreadable` lines on stdout | 13 with PC `0x80000098` |
+
+All seven plain fixture programs were also regenerated and run against v0.8.1 the same day: the stop
+lines, their streams and the exit codes are identical to the v0.8.0 captures above (timing lines
+differ, as always). The v0.8.0 captures were kept as they are.
+
 The `hlt #0` probe gave `Unimplemented instruction 0xD4400000`, not a CPU-halted line, so no fixture
 for `[VM] CPU Halted:` exists. The parser recognises that line from the ounce-core source
 (`src/main.rs`), and `tests/diagnose.rs` says so.

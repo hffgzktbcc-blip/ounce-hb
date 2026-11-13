@@ -39,3 +39,23 @@ fn valid_nro_without_core_binary_reports_it() {
 fn usage_without_args() {
     assert_eq!(bin().output().unwrap().status.code(), Some(2));
 }
+
+/// Finding 14: words between the program path and `--` used to be dropped without a word. They are
+/// refused before the file is read, so the path need not exist.
+#[test]
+fn words_between_the_program_and_the_separator_are_refused() {
+    let out = bin()
+        .args(["run", "x.nro", "--timeout", "5", "--", "a"])
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{err}");
+    assert!(err.contains("unexpected argument \"--timeout\""), "{err}");
+    assert!(err.contains("after '--'"), "{err}");
+    assert!(err.contains("usage:"), "{err}");
+
+    // A single stray word, with no `--` at all, is refused the same way.
+    let out = bin().args(["run", "x.nro", "stray"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("unexpected argument \"stray\""));
+}

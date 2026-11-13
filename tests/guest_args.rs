@@ -2,7 +2,7 @@
 //! through the real ounce-core. One just over must be refused, and no ounce-core process may start.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use ounce_hb::{CORE_BIN_ENV, MAX_GUEST_ARGS_BYTES, guest_args_len, locate_core};
@@ -20,6 +20,16 @@ fn nro(words: &[u32]) -> Vec<u8> {
     b[0x24..0x28].copy_from_slice(&(total as u32).to_le_bytes());
     b[0x80..].copy_from_slice(&text);
     b
+}
+
+/// The environment variables that point the temp directory at `tmp`: TMPDIR on unix, TMP and TEMP on
+/// Windows. ounce-hb stages its copy there, so the directory must be known to the test.
+fn temp_dir_env(tmp: &Path) -> [(&'static str, PathBuf); 3] {
+    [
+        ("TMPDIR", tmp.to_path_buf()),
+        ("TMP", tmp.to_path_buf()),
+        ("TEMP", tmp.to_path_buf()),
+    ]
 }
 
 fn work_dir(tag: &str) -> PathBuf {
@@ -60,7 +70,7 @@ fn argument_just_under_the_limit_runs_for_real() {
 
     let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
         .env(CORE_BIN_ENV, &core)
-        .env("TMPDIR", dir.join("tmp"))
+        .envs(temp_dir_env(&dir.join("tmp")))
         .arg("run")
         .arg(&nro_path)
         .arg("--")
@@ -77,16 +87,11 @@ fn argument_just_under_the_limit_runs_for_real() {
     let _ = fs::remove_dir_all(dir);
 }
 
+/// A stand-in ounce-core that leaves `marker` behind if it is ever started (a shell script on unix,
+/// a batch file on Windows).
 #[cfg(unix)]
-#[test]
-fn argument_over_the_limit_is_refused_before_ounce_core_starts() {
+fn marker_core(dir: &Path, marker: &Path) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
-    let dir = work_dir("over");
-    let nro_path = dir.join("program.nro");
-    fs::write(&nro_path, nro(&[MOV_W0_0, SVC_EXIT_PROCESS])).unwrap();
-
-    // A stand-in ounce-core that leaves a marker file if it is ever started.
-    let marker = dir.join("ounce-core-was-started");
     let core = dir.join("ounce-core-marker");
     fs::write(
         &core,
@@ -94,11 +99,36 @@ fn argument_over_the_limit_is_refused_before_ounce_core_starts() {
     )
     .unwrap();
     fs::set_permissions(&core, fs::Permissions::from_mode(0o755)).unwrap();
+    core
+}
+
+#[cfg(windows)]
+fn marker_core(dir: &Path, marker: &Path) -> PathBuf {
+    let core = dir.join("ounce-core-marker.cmd");
+    fs::write(
+        &core,
+        format!(
+            "@echo off\r\ntype nul > \"{}\"\r\nexit /b 0\r\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+    core
+}
+
+#[test]
+fn argument_over_the_limit_is_refused_before_ounce_core_starts() {
+    let dir = work_dir("over");
+    let nro_path = dir.join("program.nro");
+    fs::write(&nro_path, nro(&[MOV_W0_0, SVC_EXIT_PROCESS])).unwrap();
+
+    let marker = dir.join("ounce-core-was-started");
+    let core = marker_core(&dir, &marker);
 
     let arg = arg_with_total(MAX_GUEST_ARGS_BYTES + 1);
     let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
         .env(CORE_BIN_ENV, &core)
-        .env("TMPDIR", dir.join("tmp"))
+        .envs(temp_dir_env(&dir.join("tmp")))
         .arg("run")
         .arg(&nro_path)
         .arg("--")

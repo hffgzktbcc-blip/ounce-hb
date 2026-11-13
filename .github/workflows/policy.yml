@@ -1,17 +1,19 @@
 name: Scope policy
 
-# Enforces CONTRIBUTING.md section 1 (rule 6) on new issues, pull requests and discussions.
+# Enforces CONTRIBUTING.md section 1 (rule 6) on new and edited issues, pull requests and discussions.
+# A flagged item gets labels and, once, a comment. The bot closes and locks only when the repository
+# variable POLICY_AUTOCLOSE is 'true'; an edited item only ever gets labels.
 # pull_request_target runs with write permissions on the base repository, so this workflow
 # never checks out or runs code from the pull request. It checks out the default branch only and
 # passes untrusted text through environment variables.
 
 on:
   issues:
-    types: [opened]
+    types: [opened, edited]
   pull_request_target:
-    types: [opened]
+    types: [opened, edited]
   discussion:
-    types: [created]
+    types: [created, edited]
 
 permissions:
   contents: read
@@ -40,6 +42,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           REPO_OWNER: ${{ github.repository_owner }}
+          EVENT_ACTION: ${{ github.event.action }}
+          POLICY_AUTOCLOSE: ${{ vars.POLICY_AUTOCLOSE }}
           EVENT_KIND: ${{ github.event_name == 'issues' && 'issue' || github.event_name == 'pull_request_target' && 'pull_request' || 'discussion' }}
           ITEM_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number || github.event.discussion.number }}
           ITEM_NODE_ID: ${{ github.event.discussion.node_id }}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Post the missing-details triage comment on a newly opened issue.
 
-Called by .github/workflows/issue-triage.yml. It never closes or locks anything: items that
+Called by .github/workflows/issue-triage.yml. It never closes, locks or labels anything: items that
 match the scope policy are left to .github/workflows/policy.yml (see triage_policy.py), so this
 script skips them rather than adding a second comment.
 
@@ -126,7 +126,8 @@ def build_comment(author: str, missing: List[str], duplicates: List[Tuple[object
         lines.append("")
     if duplicates:
         lines.append("### Potential related open issues")
-        lines += [f"- #{num}: {title}" for num, title in duplicates]
+        # Numbers only: other items' titles are untrusted text, so they are not echoed.
+        lines += [f"- #{num}" for num, _title in duplicates]
         lines.append("")
     return "\n".join(lines).strip()
 
@@ -142,7 +143,7 @@ def main(env: Optional[Dict[str, str]] = None, runner: Optional[Runner] = None) 
     if not repo or not number:
         print("Missing issue information; nothing to do.")
         return 0
-    if classify(title, body).action == "close":
+    if classify(title, body).action == "flag":
         print(f"#{number} matches the scope policy; policy.yml handles it, no triage comment.")
         return 0
 

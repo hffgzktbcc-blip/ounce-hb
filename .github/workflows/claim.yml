@@ -1,0 +1,148 @@
+name: Issue claim
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  claim:
+    if: |
+      github.event.repository.private == false &&
+      github.event.issue.pull_request == null &&
+      github.event.sender.type != 'Bot' &&
+      !endsWith(github.event.sender.login, '[bot]') &&
+      github.event.sender.login != github.repository_owner
+    name: Process issue claim
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Process issue claim comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_STATE: ${{ github.event.issue.state }}
+          ISSUE_ASSIGNEES: ${{ toJson(github.event.issue.assignees) }}
+          ISSUE_LABELS: ${{ toJson(github.event.issue.labels) }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+
+          CLAIM_MARKER = '<!-- ounce-hb-claim-v1 -->'
+          CLAIM_PHRASES = {
+              "i'll take this",
+              "ill take this",
+              "i will take this",
+              "can i work on this",
+              "can i take this",
+              "claim",
+              "/claim",
+              "i would like to work on this",
+              "i'd like to work on this",
+              "id like to work on this",
+              "i want to work on this",
+          }
+
+          def normalize(text):
+              cleaned = text.strip().lower()
+              if cleaned.startswith('/'):
+                  return '/' + re.sub(r'^[^\w/]+|[^\w]+$', '', cleaned[1:])
+              return re.sub(r'^[^\w]+|[^\w]+$', '', cleaned)
+
+          repo = os.environ.get('GH_REPO')
+          issue_num = os.environ.get('ISSUE_NUMBER')
+          comment_body = os.environ.get('COMMENT_BODY', '')
+          comment_author = os.environ.get('COMMENT_AUTHOR', '')
+          issue_state = os.environ.get('ISSUE_STATE', 'open').lower()
+
+          if not repo or not issue_num or not comment_author or not comment_body:
+              print("Missing required environment variables; nothing to do.")
+              sys.exit(0)
+
+          # Match claim intent
+          matched = False
+          if normalize(comment_body) in CLAIM_PHRASES:
+              matched = True
+          else:
+              for line in comment_body.splitlines():
+                  if normalize(line) in CLAIM_PHRASES:
+                      matched = True
+                      break
+
+          if not matched:
+              print("Comment is not a claim request; skipping.")
+              sys.exit(0)
+
+          if issue_state != 'open':
+              print(f"Issue #{issue_num} is not open ({issue_state}); skipping.")
+              sys.exit(0)
+
+          try:
+              assignees_raw = json.loads(os.environ.get('ISSUE_ASSIGNEES', '[]'))
+              assignees = [a.get('login') if isinstance(a, dict) else str(a) for a in assignees_raw]
+          except Exception:
+              assignees = []
+
+          try:
+              labels_raw = json.loads(os.environ.get('ISSUE_LABELS', '[]'))
+              labels = set(l.get('name', '').lower() if isinstance(l, dict) else str(l).lower() for l in labels_raw)
+          except Exception:
+              labels = set()
+
+          def post_comment(text):
+              subprocess.run(
+                  ['gh', 'api', '-X', 'POST', f'repos/{repo}/issues/{issue_num}/comments', '-f', f'body={text}'],
+                  check=True
+              )
+
+          if assignees:
+              if comment_author in assignees:
+                  print(f"Issue #{issue_num} is already assigned to {comment_author}.")
+                  sys.exit(0)
+              reply = (
+                  f"{CLAIM_MARKER}\n"
+                  f"This issue is already assigned to @{assignees[0]}.\n\n"
+                  f"You can browse other starter issues with the 'good first issue' label here:\n"
+                  f"https://github.com/{repo}/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22+no%3Aassignee"
+              )
+              post_comment(reply)
+              sys.exit(0)
+
+          if 'good first issue' not in labels:
+              reply = (
+                  f"{CLAIM_MARKER}\n"
+                  f"Self-assignment is available for issues labeled 'good first issue'. For other issues, a maintainer will coordinate assignment.\n\n"
+                  f"You can browse open beginner tasks here:\n"
+                  f"https://github.com/{repo}/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22+no%3Aassignee"
+              )
+              post_comment(reply)
+              sys.exit(0)
+
+          # Assign contributor
+          try:
+              subprocess.run(
+                  ['gh', 'api', '-X', 'POST', f'repos/{repo}/issues/{issue_num}/assignees', '-f', f'assignees[]={comment_author}'],
+                  check=True
+              )
+              reply = (
+                  f"{CLAIM_MARKER}\n"
+                  f"Assigned to @{comment_author}. Tell us if you get stuck! If it goes quiet for 14 days we will check whether to keep it reserved."
+              )
+              post_comment(reply)
+              print(f"Assigned #{issue_num} to @{comment_author}.")
+          except subprocess.CalledProcessError as e:
+              print(f"Failed to assign issue: {e}", file=sys.stderr)
+              sys.exit(1)
+          PY

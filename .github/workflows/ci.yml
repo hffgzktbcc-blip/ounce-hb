@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -17,23 +21,37 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
     steps:
-      # actions/checkout v7.0.1; full commit SHA verified against the upstream release tag.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      # Note: On Windows runners, git defaults to core.autocrlf=true, which converts repository
+      # LF line endings to CRLF on checkout. This breaks `cargo fmt --check` and shell scripts.
+      # We explicitly disable autocrlf before checkout so that files retain LF line endings.
+      - name: Configure Git line endings
+        run: git config --global core.autocrlf false
+
+      # actions/checkout v4; full commit SHA pinned as in ounce-core.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
+
       - name: Guardrails (unregistered binaries, key/decryption code)
         run: |
           scripts/guardrails.sh --self-test
           scripts/guardrails.sh
+
       - name: Toolchain
         run: |
           rustup show active-toolchain || rustup toolchain install stable --profile minimal -c rustfmt -c clippy
           rustc --version
+
       - name: fmt
         run: cargo fmt --all -- --check
+
       - name: clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
       - name: test
         run: cargo test --workspace --locked

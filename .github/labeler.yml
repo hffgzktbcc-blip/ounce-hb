@@ -1,0 +1,24 @@
+'area: runtime':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/**'
+          - 'Cargo.toml'
+          - 'Cargo.lock'
+
+'area: verification':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'tests/**'
+
+'area: docs':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docs/**'
+          - '*.md'
+
+'area: ci':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+          - 'scripts/**'
+          - 'deny.toml'

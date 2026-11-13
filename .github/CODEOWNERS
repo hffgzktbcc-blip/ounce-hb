@@ -1,0 +1,12 @@
+# Code ownership rules for ounce-hb.
+# Human approval must be enabled in branch protection by repository owner.
+* @hffgzktbcc-blip
+
+# Core legal, security, and clean-room policy files
+/docs/PROVENANCE.md @hffgzktbcc-blip
+/docs/CLEAN_ROOM.md @hffgzktbcc-blip
+/scripts/guardrails.sh @hffgzktbcc-blip
+/.github/CODEOWNERS @hffgzktbcc-blip
+/.github/workflows/ @hffgzktbcc-blip
+/Cargo.toml @hffgzktbcc-blip
+/Cargo.lock @hffgzktbcc-blip

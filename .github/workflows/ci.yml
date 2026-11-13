@@ -42,6 +42,12 @@ jobs:
           scripts/guardrails.sh --self-test
           scripts/guardrails.sh
 
+      # Offline tests for the repository automation scripts (triage, claim, welcome). gh is faked.
+      - name: Automation script tests
+        run: |
+          PYTHON=$(command -v python3 || command -v python)
+          "$PYTHON" -m unittest discover -s scripts -p 'test_*.py' -v
+
       - name: Toolchain
         run: |
           rustup show active-toolchain || rustup toolchain install stable --profile minimal -c rustfmt -c clippy

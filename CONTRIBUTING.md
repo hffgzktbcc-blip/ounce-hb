@@ -20,6 +20,11 @@ We maintain zero tolerance for retail/commercial software:
 Pull requests, issues, or discussions regarding retail titles, keys, firmware, or copyright
 circumvention will be closed and locked immediately without discussion.
 
+A workflow (`.github/workflows/policy.yml`) applies this rule automatically to new items from
+non-maintainers. A clear request is closed and locked with a comment. An ambiguous mention is
+labelled `needs-owner-decision` for a maintainer to decide, and nothing is closed. A maintainer
+can unlock and reopen any item closed in error; see [docs/GITHUB_TOOLING.md](docs/GITHUB_TOOLING.md).
+
 ---
 
 ## 2. Clean-Room Rule

@@ -575,7 +575,7 @@ fn ounce_core_that_cannot_be_started_exits_5() {
         &[],
         &[],
     );
-    expect_stop_refused(&out, 5, "could not run ounce-core");
+    expect_stop_refused(&out, 5, "could not run backend");
     let _ = fs::remove_dir_all(dir);
 }
 

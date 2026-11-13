@@ -5,7 +5,7 @@ that you built yourself from source with [devkitPro](https://devkitpro.org/) and
 [libnx](https://github.com/switchbrew/libnx).
 
 ounce-hb runs homebrew through the released [ounce-core](https://github.com/hffgzktbcc-blip/ounce-core)
-command-line tool and explains how each run stopped, with stable exit codes.
+command-line tool by default, or a selected engine subprocess, and explains how each run stopped, with stable exit codes.
 
 > **Status: v0.0.1 (Milestone M0)**. The CLI validates input formats and refuses out-of-scope
 > containers. It executes validated NROs via an `ounce-core` subprocess runner in headless mode.
@@ -61,14 +61,38 @@ Issues, pull requests, or discussions requesting retail software support, keys, 
 # Run a homebrew NRO
 cargo run -- run path/to/app.nro
 
+# Select the performance/graphical engine (still run headlessly)
+cargo run -- run --backend runtime path/to/app.nro
+
+# Or use a specific executable (options also work after the NRO path)
+cargo run -- run path/to/app.nro --backend ./target/release/ounce-runtime
+
 # Run with guest arguments (separated by --)
-cargo run -- run path/to/app.nro -- arg1 arg2
+cargo run -- run path/to/app.nro --backend core -- arg1 arg2
 ```
+
+### Backend Selection
+`--backend <core|runtime|path>` overrides `OUNCE_BACKEND`; an unset or empty environment
+variable defaults to `core`. Options must precede the guest `--` separator.
+
+- `core`: use `OUNCE_CORE_BIN` when set and nonempty, otherwise find executable `ounce-core` on `PATH`.
+- `runtime`: use `OUNCE_RUNTIME_BIN` when set and nonempty, otherwise find executable `ounce-runtime` on `PATH`.
+- Any other value: execute that file directly, including relative paths and paths containing spaces.
+  A bare filename is relative to the current directory, rather than searched on `PATH`.
+
+A configured binary override that is missing fails with exit code 3; it does not fall back to
+`PATH`. Empty `PATH` entries are skipped. Every backend must support
+`run-nro <staged.nro> --present=headless [guest args...]` and the existing engine stop-line
+protocol in [docs/DIAGNOSIS.md](docs/DIAGNOSIS.md). All selections share timeout killing,
+bounded output capture, input validation, guest-argument restrictions, and exit classification.
+Selecting runtime does not enable graphical presentation. Engine versions with different CLI
+or stop-line formats are not automatically detected or retried; unrecognised stops return 1.
+Dispatch tests use shell stand-ins and do not establish real-engine compatibility.
 
 ### Subprocess Runner Behavior
 - **Timeout**: Each execution is subject to a 60-second wall-clock limit. If exceeded, the child process is killed and exit code 4 is returned. Set `OUNCE_HB_TIMEOUT_SECS` to a number of seconds greater than 0 and at most 86400 to change the limit; any other value is refused with exit code 2.
 - **Guest Arguments**: Guest arguments starting with `-` are refused because upstream `ounce-core` silently discards them. Pass positional arguments only.
-- **Headless Mode**: ounce-hb runs `ounce-core` with `--present=headless` so no GUI window is required. ounce-core v0.8.1 and newer also open no host audio device; v0.8.0 still tries and may print device errors where there is none.
+- **Headless Mode**: ounce-hb runs the selected engine with `--present=headless` so no GUI window is required. ounce-core v0.8.1 and newer also open no host audio device; v0.8.0 still tries and may print device errors where there is none.
 - **Output**: Program stdout and stderr are captured while the program runs and printed when ounce-core exits (or is killed), so a long run shows nothing until it ends.
 - **Stop Explanations**: When a run stops abnormally, ounce-hb prints the guest output unchanged, then a short plain-words reason, the `ounce-hb run` command that reproduces it, and the exit code. Details and the recognised ounce-core lines are in [docs/DIAGNOSIS.md](docs/DIAGNOSIS.md).
 
@@ -80,9 +104,9 @@ A clean guest exit returns `0`. Every other outcome has its own code, so scripts
 | `0` | Guest program exited normally (svcExitProcess) |
 | `1` | ounce-core stopped in a way ounce-hb does not recognise (raw output is printed unchanged) |
 | `2` | Bad CLI invocation, file unreadable, out-of-scope input (e.g. NSP, XCI, NCA, NPDM, or unrecognized magic), a guest argument starting with `-`, guest arguments longer than 16 KiB together ([ounce-core #418](https://github.com/hffgzktbcc-blip/ounce-core/issues/418)), a malformed `OUNCE_HB_TIMEOUT_SECS`, or an unsupported NSO kind |
-| `3` | ounce-core binary missing or not found |
-| `4` | Execution timeout (ounce-core killed after 60 seconds, or `OUNCE_HB_TIMEOUT_SECS`) |
-| `5` | ounce-hb could not start, wait on, or stage for ounce-core (host I/O error) |
+| `3` | Selected backend binary missing or not found |
+| `4` | Execution timeout (backend killed after 60 seconds, or `OUNCE_HB_TIMEOUT_SECS`) |
+| `5` | ounce-hb could not start, wait on, or stage for the selected backend (host I/O error) |
 | `10` | Unimplemented instruction in ounce-core |
 | `11` | Memory access fault |
 | `12` | Other CPU error reported by ounce-core |

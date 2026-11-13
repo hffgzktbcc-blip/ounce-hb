@@ -100,17 +100,27 @@ impl StopReason {
     /// exit. Otherwise it names the category and the exit code, says why in one line, and ends with the
     /// `ounce-hb run` command that reproduces the run. `program` and `args` are copied as given.
     pub fn explain(&self, program: &str, args: &[String]) -> String {
+        self.explain_backend(program, args, None)
+    }
+
+    /// Explanation with an explicit backend in the reproduction command.
+    pub fn explain_backend(
+        &self,
+        program: &str,
+        args: &[String],
+        backend: Option<&std::ffi::OsStr>,
+    ) -> String {
         let (headline, detail) = match self {
             StopReason::CleanExit => return String::new(),
             StopReason::Refused { message } => ("the request was refused", message.clone()),
-            StopReason::CoreMissing { message } => ("ounce-core was not found", message.clone()),
+            StopReason::CoreMissing { message } => ("the backend was not found", message.clone()),
             StopReason::HostIo { message } => {
-                ("ounce-hb could not run ounce-core", message.clone())
+                ("ounce-hb could not run the backend", message.clone())
             }
             StopReason::Timeout { limit } => (
                 "the run did not finish in time",
                 format!(
-                    "ounce-core was killed after {} s. The program may be waiting for input, looping, or slower than this limit.",
+                    "the backend was killed after {} s. The program may be waiting for input, looping, or slower than this limit.",
                     limit.as_secs_f64()
                 ),
             ),
@@ -171,6 +181,10 @@ impl StopReason {
             }
         };
         let mut reproduce = format!("ounce-hb run {}", shell_quote(program));
+        if let Some(backend) = backend {
+            reproduce.push_str(" --backend ");
+            reproduce.push_str(&shell_quote(&backend.to_string_lossy()));
+        }
         if !args.is_empty() {
             reproduce.push_str(" --");
             for arg in args {

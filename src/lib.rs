@@ -13,8 +13,9 @@ pub mod backend;
 pub mod diagnose;
 
 pub use backend::{
-    Backend, CORE_BIN_ENV, DEFAULT_TIMEOUT, HEAD_BYTES, MAX_CAPTURED_BYTES, PIPE_CLOSE_GRACE,
-    RunOutput, Staged, Subprocess, TAIL_BYTES, find_core, locate_core, truncation_marker,
+    BACKEND_ENV, Backend, CORE_BIN_ENV, DEFAULT_TIMEOUT, Engine, HEAD_BYTES, MAX_CAPTURED_BYTES,
+    PIPE_CLOSE_GRACE, RUNTIME_BIN_ENV, RunOutput, Staged, Subprocess, TAIL_BYTES, find_core,
+    find_runtime, locate_core, truncation_marker,
 };
 
 /// What a file turned out to be.
@@ -85,7 +86,7 @@ pub fn classify(bytes: &[u8]) -> Result<Kind, Rejection> {
 /// Why a validated image could not be run. The `Display` text is shown to the user verbatim.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunError {
-    /// No ounce-core binary was found. See docs/OUNCE_CORE_API_NEEDS.md.
+    /// The selected backend binary was not found (legacy variant name).
     CoreNotFound(String),
     /// ounce-core ran past the time limit and was killed.
     Timeout(Duration),
@@ -131,15 +132,14 @@ impl fmt::Display for RunError {
         match self {
             RunError::CoreNotFound(why) => write!(
                 f,
-                "ounce-core binary not found: {why}. Set OUNCE_CORE_BIN to the binary, or put it on PATH \
-                 (build the ounce-core v0.8.1 CLI). Details: docs/OUNCE_CORE_API_NEEDS.md."
+                "backend binary not found: {why}. Set the selected engine's binary override, or put it on PATH."
             ),
             RunError::Timeout(limit) => write!(
                 f,
-                "ounce-core did not finish within {} s and was killed. The program may be stuck.",
+                "backend did not finish within {} s and was killed. The program may be stuck.",
                 limit.as_secs_f64()
             ),
-            RunError::Io(why) => write!(f, "could not run ounce-core: {why}"),
+            RunError::Io(why) => write!(f, "could not run backend: {why}"),
             RunError::UnsupportedArg(arg) => write!(
                 f,
                 "guest argument {arg:?} starts with '-'. ounce-core run-nro drops such arguments, so it is refused."
@@ -195,15 +195,30 @@ pub fn parse_timeout(value: &str) -> Result<Duration, RunError> {
     }
 }
 
-/// Run a validated image with the default backend (the ounce-core CLI, see [`backend`]). The limit
+/// Run using `OUNCE_BACKEND`, or ounce-core by default (see [`backend`]). The limit
 /// is [`DEFAULT_TIMEOUT`] unless [`TIMEOUT_ENV`] overrides it.
 pub fn run(kind: Kind, bytes: &[u8], args: &[String]) -> Result<RunOutput, RunError> {
+    let selection = std::env::var_os(BACKEND_ENV).filter(|v| !v.is_empty());
+    let engine = selection
+        .as_deref()
+        .map(Engine::from_selection)
+        .unwrap_or(Engine::Core);
+    run_engine(&engine, kind, bytes, args)
+}
+
+/// Run with an explicit engine, retaining the shared subprocess safety limits.
+pub fn run_engine(
+    engine: &Engine,
+    kind: Kind,
+    bytes: &[u8],
+    args: &[String],
+) -> Result<RunOutput, RunError> {
     if kind != Kind::Nro {
         return Err(RunError::UnsupportedKind(kind));
     }
     check_guest_args(args)?;
     let timeout = timeout_from_env()?;
-    let backend = Subprocess::new(locate_core()?, timeout);
+    let backend = Subprocess::new(engine.locate()?, timeout);
     run_with(&backend, kind, bytes, args)
 }
 

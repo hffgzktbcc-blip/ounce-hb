@@ -32,6 +32,51 @@ use crate::RunError;
 
 /// Environment variable that names the ounce-core binary. Checked before `PATH`.
 pub const CORE_BIN_ENV: &str = "OUNCE_CORE_BIN";
+/// Environment override for the runtime executable.
+pub const RUNTIME_BIN_ENV: &str = "OUNCE_RUNTIME_BIN";
+/// Default backend selection when the CLI does not specify one.
+pub const BACKEND_ENV: &str = "OUNCE_BACKEND";
+
+/// Engine selection. Custom paths use the same headless subprocess protocol.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Engine {
+    Core,
+    Runtime,
+    Path(PathBuf),
+}
+
+impl Engine {
+    pub fn from_selection(value: &std::ffi::OsStr) -> Self {
+        match value.to_str() {
+            Some("core") => Self::Core,
+            Some("runtime") => Self::Runtime,
+            _ => Self::Path(value.into()),
+        }
+    }
+
+    pub fn locate(&self) -> Result<PathBuf, RunError> {
+        match self {
+            Self::Core => locate_core(),
+            Self::Runtime => {
+                find_runtime(std::env::var_os(RUNTIME_BIN_ENV), std::env::var_os("PATH"))
+            }
+            Self::Path(path) if path.is_file() => {
+                // A bare relative filename must not turn into a PATH lookup at spawn time.
+                if path.is_relative() {
+                    std::env::current_dir()
+                        .map(|dir| dir.join(path))
+                        .map_err(|e| RunError::Io(e.to_string()))
+                } else {
+                    Ok(path.clone())
+                }
+            }
+            Self::Path(path) => Err(RunError::CoreNotFound(format!(
+                "backend path {} is not a file",
+                path.display()
+            ))),
+        }
+    }
+}
 
 /// Wall-clock limit for one run. ounce-core is killed when it is exceeded.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -88,7 +133,7 @@ pub trait Backend {
     fn run_nro(&self, program: &Staged, args: &[String]) -> Result<RunOutput, RunError>;
 }
 
-/// Runs the `ounce-core` CLI as a child process: `ounce-core run-nro <nro> --present=headless [args]`.
+/// Runs an engine CLI as a child process using the common protocol: `ounce-core run-nro <nro> --present=headless [args]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Subprocess {
     bin: PathBuf,
@@ -142,7 +187,7 @@ impl Backend for Subprocess {
                 Err(e) => {
                     kill_tree(&mut child);
                     let _ = child.wait();
-                    break Err(RunError::Io(format!("waiting for ounce-core failed: {e}")));
+                    break Err(RunError::Io(format!("waiting for backend failed: {e}")));
                 }
             }
         };
@@ -313,7 +358,7 @@ impl Drop for DeathWatch {
 /// The marker line put where bytes of `stream` (`stdout` or `stderr`) were dropped.
 pub fn truncation_marker(stream: &str, dropped: u64) -> String {
     format!(
-        "[ounce-hb: {dropped} bytes of ounce-core's {stream} were dropped here to stay within \
+        "[ounce-hb: {dropped} bytes of the backend's {stream} were dropped here to stay within \
          {MAX_CAPTURED_BYTES} bytes; the first {HEAD_BYTES} and the last {TAIL_BYTES} bytes are kept]\n"
     )
 }
@@ -461,18 +506,41 @@ pub fn find_core(
     override_bin: Option<OsString>,
     path: Option<OsString>,
 ) -> Result<PathBuf, RunError> {
+    find_named("ounce-core", CORE_BIN_ENV, override_bin, path)
+}
+
+/// Finds ounce-runtime using its override, then executable files on PATH.
+pub fn find_runtime(
+    override_bin: Option<OsString>,
+    path: Option<OsString>,
+) -> Result<PathBuf, RunError> {
+    find_named("ounce-runtime", RUNTIME_BIN_ENV, override_bin, path)
+}
+
+fn find_named(
+    name: &str,
+    variable: &str,
+    override_bin: Option<OsString>,
+    path: Option<OsString>,
+) -> Result<PathBuf, RunError> {
     if let Some(value) = override_bin.filter(|v| !v.is_empty()) {
         let bin = PathBuf::from(value);
         return if bin.is_file() {
-            Ok(bin)
+            if bin.is_relative() {
+                std::env::current_dir()
+                    .map(|dir| dir.join(bin))
+                    .map_err(|e| RunError::Io(e.to_string()))
+            } else {
+                Ok(bin)
+            }
         } else {
             Err(RunError::CoreNotFound(format!(
-                "{CORE_BIN_ENV} points at {}, which is not a file",
+                "{variable} points at {}, which is not a file",
                 bin.display()
             )))
         };
     }
-    let name = format!("ounce-core{}", std::env::consts::EXE_SUFFIX);
+    let name = format!("{name}{}", std::env::consts::EXE_SUFFIX);
     if let Some(path) = path {
         for dir in std::env::split_paths(&path).filter(|d| !d.as_os_str().is_empty()) {
             let candidate = dir.join(&name);
@@ -482,7 +550,7 @@ pub fn find_core(
         }
     }
     Err(RunError::CoreNotFound(format!(
-        "{CORE_BIN_ENV} is not set and no ounce-core is on PATH"
+        "{variable} is not set and no {name} is on PATH"
     )))
 }
 

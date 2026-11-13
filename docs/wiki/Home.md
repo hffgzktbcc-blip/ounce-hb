@@ -15,7 +15,7 @@ verifiable correctness, diagnostic clarity, and complete legal transparency.
 - **[FAQ](FAQ.md)**: Frequently asked questions regarding scope, legal boundaries, and relationship to ounce-core.
 - **[Clean-Room Policy](Clean-room-policy.md)**: Our development protocol, allowed sources, and strict isolation rules.
 - **[Architecture](Architecture.md)**: System design, format classification, subprocess runner model, and error handling.
-- **[Roadmap](Roadmap.md)**: Milestone plans from M0 (current scaffold & runner) to M3 (interactive execution).
+- **[Roadmap](Roadmap.md)**: Milestones from M0 (done) through M3 (public preview), each linked to its GitHub issue.
 
 ---
 

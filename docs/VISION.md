@@ -46,10 +46,13 @@ CPU and kernel emulation to ounce-core.
 
 | Milestone | Target | Description | Status |
 |---|---|---|---|
-| **M0** | Scaffold & Subprocess Runner | Format classification (`NRO0`/`NSO0`), rejection of retail containers, guardrails CI, and subprocess execution via `ounce-core` CLI. | **Current** |
-| **M1** | Library Integration | Link against upstream `ounce-core` as a Rust library target, removing subprocess overhead. | Planned (see [OUNCE_CORE_API_NEEDS.md](OUNCE_CORE_API_NEEDS.md)) |
-| **M2** | Expanded Headless Runtime | Full libnx console standard I/O redirection, filesystem sandbox mapping, and common homebrew IPC stubs. | Planned |
-| **M3** | Interactive & Framebuffer | Headless frame capture and optional presentation window for interactive graphical homebrew. | Future |
+| **M0** | Scaffold, runner, diagnostics | Format classification, retail-container refusal, guardrails CI, supervised `ounce-core` subprocess runner, plain-words stop diagnosis with stable exit codes, end-to-end tests against ounce-core v0.8.0. | **Done** |
+| **M1** | Corpus parity | Run ounce-core's registered corpus directly and through `ounce-hb`, compare how each stops, keep a nightly-checked baseline ([#7](https://github.com/hffgzktbcc-blip/ounce-hb/issues/7)). | In progress |
+| **M2** | More than the console | NSO programs, and services, graphics and input for the libnx examples, one program at a time ([#9](https://github.com/hffgzktbcc-blip/ounce-hb/issues/9), [#10](https://github.com/hffgzktbcc-blip/ounce-hb/issues/10)). | Planned |
+| **M3** | Public preview | First release, tutorial, cross-platform walkthrough, parity numbers ([#11](https://github.com/hffgzktbcc-blip/ounce-hb/issues/11)). | Planned |
+
+An in-process `ounce-core` library backend is parked until the owner decides it is worth the work
+([#8](https://github.com/hffgzktbcc-blip/ounce-hb/issues/8)); see [OUNCE_CORE_API_NEEDS.md](OUNCE_CORE_API_NEEDS.md).
 
 ---
 

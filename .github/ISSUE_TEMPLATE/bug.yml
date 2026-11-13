@@ -7,7 +7,7 @@ body:
       value: |
         **Scope: homebrew built from source with devkitPro/libnx only.**
         Issues about retail games, keys, firmware, retail containers or piracy are
-        **closed and locked without discussion**.
+        **out of scope and flagged for maintainer action**.
   - type: checkboxes
     id: scope
     attributes:

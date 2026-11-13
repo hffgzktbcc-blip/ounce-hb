@@ -1,0 +1,3 @@
+
+Run stopped early. The program stopped itself with svcBreak, which programs use to report a fatal error.
+  Read the lines above the break for the last service request, then compare engines:  ounce-core ui

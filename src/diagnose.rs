@@ -1,7 +1,19 @@
 //! Explains why a run ended. ounce-core reports an abnormal stop as plain text on stdout and stderr
 //! and exits non-zero. This module matches the exact lines listed in docs/DIAGNOSIS.md and nothing
-//! else. A run whose output it does not recognise becomes [`StopReason::Unrecognised`], with
-//! ounce-core's output kept unchanged, and no cause is inferred from it.
+//! else. A run whose output it does not recognise becomes [`StopReason::Unrecognised`], and no cause
+//! is inferred from it.
+//!
+//! Guest text reaches the output too: `svcOutputDebugString` is printed on stdout as it is, so a
+//! program can print a line that looks like a stop line. Two facts about ounce-core v0.8.1 make the
+//! classification hold anyway (docs/DIAGNOSIS.md, "Guest text and the stop line"):
+//!
+//! - Guest text never reaches stderr. A stop line on stderr is ounce-core's own.
+//! - ounce-core prints its stop line on stdout after the VM has stopped, so it is the last stop line
+//!   there. Nothing the guest printed can come after it.
+//!
+//! So the stop line is the last recognised line on stderr if there is one, else the last recognised
+//! line on stdout. `[VM Error]` and `[Loader Error]` lines are only taken from stderr, where
+//! ounce-core prints them.
 
 use std::fmt::Write as _;
 use std::time::Duration;
@@ -49,14 +61,18 @@ pub enum StopReason {
     BudgetExhausted { instructions: u64 },
     /// `[Loader Error] ...`: ounce-core could not load the file.
     LoaderError { message: String },
-    /// Anything else. `stdout` and `stderr` are ounce-core's output, unchanged. `exit_code` is
-    /// `None` when the process was killed by a signal.
+    /// Anything else. `exit_code` is `None` when the process was killed by a signal. The tails
+    /// hold the last [`EXCERPT_BYTES`] of each stream, for the record; the full output is printed
+    /// by `ounce-hb run` before the explanation.
     Unrecognised {
         exit_code: Option<i32>,
-        stdout: String,
-        stderr: String,
+        stdout_tail: String,
+        stderr_tail: String,
     },
 }
+
+/// How much of the end of each stream [`StopReason::Unrecognised`] keeps.
+pub const EXCERPT_BYTES: usize = 1024;
 
 impl StopReason {
     /// The process exit code `ounce-hb run` uses for this outcome. Each value is documented in
@@ -149,7 +165,7 @@ impl StopReason {
                 (
                     "ounce-core stopped in a way ounce-hb does not recognise",
                     format!(
-                        "ounce-core exit code: {code}. Its output is printed above unchanged. Nothing was inferred from it, so keep that output when you report this."
+                        "ounce-core exit code: {code}. Its output is printed above. Nothing was inferred from it, so keep that output when you report this."
                     ),
                 )
             }
@@ -193,30 +209,59 @@ pub fn from_error(e: &RunError) -> StopReason {
     }
 }
 
-/// Classifies one finished ounce-core run from its exit status and output.
+/// Classifies one finished ounce-core run from its exit status and output. See the module notes
+/// for why the last stop line is used and why stderr is read first.
 pub fn from_output(out: &RunOutput) -> StopReason {
-    let lines: Vec<&str> = out
-        .stdout
-        .lines()
-        .chain(out.stderr.lines())
-        .map(str::trim)
-        .collect();
-    let clean = lines.contains(&CLEAN_EXIT);
-    let fault = lines.iter().find_map(|line| recognise(line));
-    match out.exit_code {
-        Some(0) if clean && fault.is_none() => StopReason::CleanExit,
-        Some(code) if code != 0 && !clean => match fault {
-            Some(StopReason::Break { .. }) => break_details(&lines),
-            Some(reason) => reason,
-            None => unrecognised(out),
+    let stderr: Vec<&str> = out.stderr.lines().map(str::trim).collect();
+    let stdout: Vec<&str> = out.stdout.lines().map(str::trim).collect();
+    let chosen = last_recognised(&stderr, Stream::Stderr)
+        .or_else(|| last_recognised(&stdout, Stream::Stdout));
+    match (out.exit_code, chosen) {
+        (Some(0), Some((StopReason::CleanExit, _))) => StopReason::CleanExit,
+        (Some(code), Some((reason, after))) if code != 0 => match reason {
+            StopReason::CleanExit => unrecognised(out),
+            StopReason::Break { .. } => break_details(after),
+            reason => reason,
         },
         _ => unrecognised(out),
     }
 }
 
-/// Matches one line against the ounce-core stop lines. `None` means the line is not one of them, or
-/// it has the shape of one but its fields do not parse.
+/// Which stream a line came from. Guest text only ever reaches stdout.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Stream {
+    Stdout,
+    Stderr,
+}
+
+/// The last line of `lines` that is a stop line ounce-core prints on `stream`, with the lines that
+/// follow it (the svcBreak details are there).
+fn last_recognised<'a>(
+    lines: &'a [&'a str],
+    stream: Stream,
+) -> Option<(StopReason, &'a [&'a str])> {
+    lines.iter().enumerate().rev().find_map(|(i, line)| {
+        let reason = recognise(line)?;
+        let printed_on_stderr = matches!(
+            reason,
+            StopReason::UnimplementedInstruction { .. }
+                | StopReason::MemoryFault { .. }
+                | StopReason::CpuError { .. }
+                | StopReason::LoaderError { .. }
+        );
+        if printed_on_stderr && stream == Stream::Stdout {
+            return None;
+        }
+        Some((reason, &lines[i + 1..]))
+    })
+}
+
+/// Matches one line against the ounce-core stop lines, including the clean-exit line. `None` means
+/// the line is not one of them, or it has the shape of one but its fields do not parse.
 fn recognise(line: &str) -> Option<StopReason> {
+    if line == CLEAN_EXIT {
+        return Some(StopReason::CleanExit);
+    }
     if let Some(rest) = line.strip_prefix("[VM Error] Unimplemented instruction 0x") {
         let (word, pc) = rest.split_once(" at PC: 0x")?;
         return Some(StopReason::UnimplementedInstruction {
@@ -265,8 +310,9 @@ fn recognise(line: &str) -> Option<StopReason> {
     None
 }
 
-/// Reads the `[VM] Break PC` and `[VM] Break result` lines that follow a svcBreak line. A result
-/// line that says `unreadable` leaves `result` empty.
+/// Reads the `[VM] Break PC` and `[VM] Break result` lines from `lines`, the lines after the
+/// svcBreak line. Earlier lines are not read, so a guest cannot plant them. A result line that says
+/// `unreadable` leaves `result` empty.
 fn break_details(lines: &[&str]) -> StopReason {
     let pc = lines
         .iter()
@@ -284,9 +330,35 @@ fn break_details(lines: &[&str]) -> StopReason {
 fn unrecognised(out: &RunOutput) -> StopReason {
     StopReason::Unrecognised {
         exit_code: out.exit_code,
-        stdout: out.stdout.clone(),
-        stderr: out.stderr.clone(),
+        stdout_tail: tail(&out.stdout, EXCERPT_BYTES),
+        stderr_tail: tail(&out.stderr, EXCERPT_BYTES),
     }
+}
+
+/// The last `max` bytes of `text`, cut at a character boundary.
+fn tail(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        return text.to_string();
+    }
+    let mut start = text.len() - max;
+    while !text.is_char_boundary(start) {
+        start += 1;
+    }
+    text[start..].to_string()
+}
+
+/// A line for `ounce-hb run` to print after the explanation when ounce-core's output was cut to fit
+/// [`crate::MAX_CAPTURED_BYTES`] per stream. `None` when nothing was dropped.
+pub fn truncation_note(out: &RunOutput) -> Option<String> {
+    if !out.truncated() {
+        return None;
+    }
+    Some(format!(
+        "ounce-hb: ounce-core wrote more than ounce-hb keeps ({} bytes per stream): {} bytes of stdout and {} bytes of stderr were dropped where the output above says so. The diagnosis used the kept parts only.\n",
+        crate::MAX_CAPTURED_BYTES,
+        out.stdout_dropped,
+        out.stderr_dropped
+    ))
 }
 
 /// The value of the hex digits at the start of `text`. `None` when there are none or they overflow.
@@ -337,6 +409,33 @@ mod tests {
     }
 
     #[test]
+    fn tail_keeps_the_end_at_a_character_boundary() {
+        assert_eq!(tail("abc", 10), "abc");
+        assert_eq!(tail("abcdef", 3), "def");
+        assert_eq!(tail("aé", 1), "");
+        assert_eq!(tail("aé", 2), "é");
+    }
+
+    #[test]
+    fn truncation_note_is_only_given_when_bytes_were_dropped() {
+        let out = RunOutput {
+            exit_code: Some(0),
+            ..RunOutput::default()
+        };
+        assert_eq!(truncation_note(&out), None);
+        let out = RunOutput {
+            stdout_dropped: 5,
+            ..RunOutput::default()
+        };
+        let note = truncation_note(&out).unwrap();
+        assert!(note.contains("5 bytes of stdout"), "{note}");
+        assert!(
+            note.contains(&crate::MAX_CAPTURED_BYTES.to_string()),
+            "{note}"
+        );
+    }
+
+    #[test]
     fn shell_quote_leaves_plain_words_and_quotes_the_rest() {
         assert_eq!(shell_quote("a/b.nro"), "a/b.nro");
         assert_eq!(shell_quote("my game.nro"), "'my game.nro'");
@@ -363,8 +462,8 @@ mod tests {
             StopReason::CleanExit,
             StopReason::Unrecognised {
                 exit_code: None,
-                stdout: String::new(),
-                stderr: String::new(),
+                stdout_tail: String::new(),
+                stderr_tail: String::new(),
             },
             StopReason::Refused {
                 message: String::new(),

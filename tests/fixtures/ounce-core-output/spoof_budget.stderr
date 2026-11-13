@@ -1,0 +1,6 @@
+[Horizon SVC] Unhandled SVC #0x7E
+
+Run stopped early. The program asked for a system service Ounce Core does not provide (see docs/svc-coverage.md).
+  Look up the call number in docs/svc-coverage.md; a missing service is a gap in Ounce Core.
+  Report it:        https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=emulation_bug.yml
+                    Include: ounce-core run-nro spoof_budget.nro --cpu=tier3, your OS, `ounce-core --version`, and the stop line above.

@@ -58,10 +58,12 @@ jobs:
             echo "SHA256SUMS has no entry for $ASSET" >&2
             exit 1
           fi
+          # Hash from stdin: with a file name, GNU sha256sum prefixes a backslash to the line when the
+          # path contains one, as Windows paths do, and that would break the comparison.
           if command -v sha256sum >/dev/null 2>&1; then
-            actual=$(sha256sum "$dir/$ASSET" | awk '{ print $1 }')
+            actual=$(sha256sum < "$dir/$ASSET" | awk '{ print $1 }')
           else
-            actual=$(shasum -a 256 "$dir/$ASSET" | awk '{ print $1 }')
+            actual=$(shasum -a 256 < "$dir/$ASSET" | awk '{ print $1 }')
           fi
           if [ "$actual" != "$expected" ]; then
             echo "sha256 mismatch for $ASSET: expected $expected, got $actual" >&2

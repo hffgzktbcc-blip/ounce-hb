@@ -1,5 +1,7 @@
 # Code ownership rules for ounce-hb.
-# Human approval must be enabled in branch protection by repository owner.
+# These rules only take effect for review when branch protection requires Code Owner review. Today it does not:
+# main requires a pull request and passing checks, 0 approving reviews, and is not enforced for admins (a single
+# maintainer). Turn on required Code Owner review when there is a second maintainer (docs/GITHUB_TOOLING.md).
 * @hffgzktbcc-blip
 
 # Core legal, security, and clean-room policy files

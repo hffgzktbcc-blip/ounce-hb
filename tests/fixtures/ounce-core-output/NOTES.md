@@ -54,7 +54,7 @@ exit status and are not ounce-hb diagnoses.
 
 ## Killed by a signal (exit code 1 in ounce-hb)
 
-- `killed_by_signal.stdout`: the stdout of a real ounce-core v0.8.0 run of a spinning NRO (`b .`, with
+- `killed_by_signal.stdout`: the stdout of a real ounce-core v0.8.0 run (one line, the staged program path after "Reading package/executable:", was replaced by `/tmp/ounce-hb-run-REDACTED/program.nro` because the original was a private local path; the parser ignores that line) of a spinning NRO (`b .`, with
   `OUNCE_NRO_BUDGET=100000000000`) that was sent SIGKILL from outside while running. ounce-core printed no
   stop line and no stderr, so the run has no recognised stop and ounce-hb reports it as unrecognised with
   exit 1. The `.stderr` file is empty for that reason. There is no `.exit` file: the process had no exit

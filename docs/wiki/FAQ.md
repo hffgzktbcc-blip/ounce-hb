@@ -18,8 +18,8 @@ explicitly rejected by the format classifier with an exit code of 2.
 ### Does ounce-hb require console keys or firmware?
 **No.** ounce-hb requires zero console keys (`prod.keys`, `title.keys`), zero master keys, and zero
 console firmware files. It never decrypts encrypted data and contains no key handling or crypto
-derivation routines. In fact, our automated guardrails (`scripts/guardrails.sh`) actively reject any
-commit that introduces key-handling or decryption patterns.
+derivation routines. Our best-effort guardrails script (`scripts/guardrails.sh`) also flags the common
+key-handling and decryption patterns in source files. It is a tripwire, not a proof, so reviews still check for them.
 
 ---
 

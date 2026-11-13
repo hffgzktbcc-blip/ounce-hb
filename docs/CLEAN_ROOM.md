@@ -63,7 +63,7 @@ To maintain clean-room integrity:
 ## 5. Automated Verification & Guardrails
 
 Clean-room and provenance rules are enforced through automated tooling:
-- `scripts/guardrails.sh` runs in CI and locally to reject:
+- `scripts/guardrails.sh` is a best-effort lint that runs in CI and locally. It rejects the items below, but it only scans listed file types and fixed patterns and can be evaded, so it supports review and does not replace it:
   - Unregistered binary files.
   - Prohibited file extensions (`.nsp`, `.xci`, `.nca`, `.keys`, `.firmware`).
   - Code patterns associated with key derivation or retail container decryption.

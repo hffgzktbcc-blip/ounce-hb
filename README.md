@@ -55,8 +55,8 @@ cargo run -- run path/to/app.nro -- arg1 arg2
 ### Subprocess Runner Behavior
 - **Timeout**: Each execution is subject to a 60-second wall-clock limit. If exceeded, the child process is killed and exit code 4 is returned. Set `OUNCE_HB_TIMEOUT_SECS` to a number of seconds greater than 0 and at most 86400 to change the limit; any other value is refused with exit code 2.
 - **Guest Arguments**: Guest arguments starting with `-` are refused because upstream `ounce-core` silently discards them. Pass positional arguments only.
-- **Headless Mode**: ounce-hb runs `ounce-core` with `--present=headless` so no GUI window or host audio device is required.
-- **Output Forwarding**: Program stdout and stderr are forwarded directly to your console.
+- **Headless Mode**: ounce-hb runs `ounce-core` with `--present=headless` so no GUI window is required. ounce-core v0.8.1 and newer also open no host audio device; v0.8.0 still tries and may print device errors where there is none.
+- **Output**: Program stdout and stderr are captured while the program runs and printed when ounce-core exits (or is killed), so a long run shows nothing until it ends.
 - **Stop Explanations**: When a run stops abnormally, ounce-hb prints the guest output unchanged, then a short plain-words reason, the `ounce-hb run` command that reproduces it, and the exit code. Details and the recognised ounce-core lines are in [docs/DIAGNOSIS.md](docs/DIAGNOSIS.md).
 
 ### Exit Codes

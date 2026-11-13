@@ -67,7 +67,9 @@ This decouples the CLI frontend from the execution mechanism:
 ### 3. Safety & Sandboxing
 - Main crate enforces `#![forbid(unsafe_code)]`.
 - Subprocess execution isolates host memory from the guest environment.
-- Headless execution ensures no graphical display windows or audio devices are allocated.
+- Headless mode (`--present=headless`) asks ounce-core not to open a window. Whether it also skips the host audio
+  device depends on the ounce-core version: v0.8.1 and newer open none, v0.8.0 still tries and may print device
+  errors on a machine with no audio output ([LIMITS.md](../LIMITS.md)).
 
 ---
 

@@ -392,11 +392,14 @@ fn signal_killed_ounce_core_is_unrecognised_exit_1() {
     let err = text(&out.stderr);
     assert_eq!(out.status.code(), Some(1), "stderr:\n{err}");
     assert!(err.contains("does not recognise"), "{err}");
-    // Only unix reports a signal. On Windows the kill sets an exit code, which ounce-hb prints as is.
+    // Only unix reports a signal. Windows has none: Stop-Process ends the process with exit code
+    // 0xFFFFFFFF, which Rust reads as -1, and ounce-hb prints that code unchanged. Observed in the
+    // ounce-core-e2e workflow on windows-latest. It is the code of this kill method, not of a
+    // real out-of-memory kill, which has not been run on Windows.
     #[cfg(unix)]
     assert!(err.contains("killed by a signal"), "{err}");
     #[cfg(windows)]
-    assert!(err.contains("ounce-core exit code: 1."), "{err}");
+    assert!(err.contains("ounce-core exit code: -1."), "{err}");
     assert!(err.contains("To reproduce: ounce-hb run "), "{err}");
     let _ = fs::remove_dir_all(dir);
 }

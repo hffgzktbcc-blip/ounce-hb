@@ -9,8 +9,7 @@ Add one table row per file. The first column is the repo-relative path in backti
 | Path | SHA-256 | Built from (source path and commit) | Toolchain (name and pinned version) | Build command | License of source |
 |---|---|---|---|---|---|
 | `docs/assets/family-banner.jpg` | 002389e90ad3b5622a112a29edab875bdfcbbf54934a66a5954aef216c420b90 | User-provided community infographic banner | N/A (Image) | Generated graphic | CC-BY-4.0 |
-
-| `tests/fixtures/libnx_hello/libnx_hello.nro` | 9abd6a44cd7a57c9276e8a280a636842c442ee21bc8f6392ad56595b9e825e98 | Original clean-room source: `tests/fixtures/libnx_hello/main.c`, in the commit introducing this fixture in https://github.com/hffgzktbcc-blip/ounce-hb (see notes below) | devkitA64 r30-1; GCC 16.1.0-1; binutils 2.46.0-1; newlib 4.6.0.20260123-4; libnx 4.12.0-1; elf2nro from switch-tools 1.13.1-1 | `DEVKITPRO=/opt/devkitpro make -C tests/fixtures/libnx_hello clean all` | MIT (fixture source); libnx ISC, newlib permissive notices, GCC runtime exception (linked runtime) |
+| `tests/fixtures/libnx_hello/libnx_hello.nro` | 9abd6a44cd7a57c9276e8a280a636842c442ee21bc8f6392ad56595b9e825e98 | Original clean-room source: `tests/fixtures/libnx_hello/main.c`, commit `dce0365` ([source](https://github.com/hffgzktbcc-blip/ounce-hb/tree/dce0365/tests/fixtures/libnx_hello)) | devkitA64 r30-1; GCC 16.1.0-1; binutils 2.46.0-1; newlib 4.6.0.20260123-4; libnx 4.12.0-1; elf2nro from switch-tools 1.13.1-1 | `DEVKITPRO=/opt/devkitpro make -C tests/fixtures/libnx_hello clean all` | MIT (fixture source); libnx ISC, newlib permissive notices, GCC runtime exception (linked runtime) |
 
 The libnx fixture uses original MIT source committed alongside its build recipe; no external
 sample source or emulator source was used. `check-toolchain.sh` requires the exact installed

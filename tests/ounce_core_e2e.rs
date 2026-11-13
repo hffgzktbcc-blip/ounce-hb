@@ -1,12 +1,13 @@
-#![cfg(unix)]
-
 //! End-to-end checks of `ounce-hb run` against the real ounce-core CLI: one run per exit code that a
 //! real program can reach, plus the wall-clock timeout with a check that the child is killed.
 //!
 //! The programs are small NROs built here (not committed). They use the same layout as the synthetic
 //! helper in tests/ounce_core_run.rs. Tests that need ounce-core skip with a SKIPPED line when
 //! `OUNCE_CORE_BIN` and PATH give no binary, and fail if `OUNCE_CORE_BIN` is set but unusable. CI sets
-//! `OUNCE_CORE_BIN` to the pinned v0.8.0 release (.github/workflows/ounce-core-e2e.yml).
+//! `OUNCE_CORE_BIN` to the pinned v0.8.0 release (.github/workflows/ounce-core-e2e.yml) on Linux,
+//! macOS and Windows. The only platform-specific code is `cfg`-gated: how the process list is read
+//! and how a process is killed (`ps`/`pkill` on unix, PowerShell on Windows), the signal wording in
+//! the SIGKILL test, and the file used for the "cannot be started" test.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -33,8 +34,10 @@ fn nro(words: &[u32], text_size_override: Option<u32>) -> Vec<u8> {
     b
 }
 
-/// A fresh directory for one test. ounce-hb stages its private copy under TMPDIR, so the directory
-/// name appears in the ounce-core command line, which the kill check relies on.
+/// A fresh directory for one test. ounce-hb stages its private copy under the temp directory, so the
+/// directory name appears in the ounce-core command line, which the kill check relies on. The temp
+/// directory comes from TMPDIR on unix and from TMP or TEMP on Windows, so all three are set.
+/// `temp_dir_env` is the single place that sets them.
 fn work_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("ounce-hb-e2e-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
@@ -57,7 +60,7 @@ fn core_bin(test: &str) -> Option<PathBuf> {
     }
 }
 
-/// Runs `ounce-hb run <nro> [extra]` with ounce-core at `core` and TMPDIR inside `dir`.
+/// Runs `ounce-hb run <nro> [extra]` with ounce-core at `core` and the temp directory inside `dir`.
 fn run_hb(
     dir: &Path,
     nro_bytes: &[u8],
@@ -69,7 +72,7 @@ fn run_hb(
     fs::write(&nro_path, nro_bytes).unwrap();
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_ounce-hb"));
     cmd.env(CORE_BIN_ENV, core)
-        .env("TMPDIR", dir.join("tmp"))
+        .envs(temp_dir_env(&dir.join("tmp")))
         .arg("run")
         .arg(&nro_path)
         .args(extra);
@@ -77,6 +80,15 @@ fn run_hb(
         cmd.env(k, v);
     }
     cmd.output().unwrap()
+}
+
+/// The environment variables that point the temp directory at `tmp`, on every platform.
+fn temp_dir_env(tmp: &Path) -> [(&'static str, PathBuf); 3] {
+    [
+        ("TMPDIR", tmp.to_path_buf()),
+        ("TMP", tmp.to_path_buf()),
+        ("TEMP", tmp.to_path_buf()),
+    ]
 }
 
 fn text(out: &[u8]) -> String {
@@ -258,13 +270,55 @@ fn loader_error_exits_17() {
     let _ = fs::remove_dir_all(dir);
 }
 
-/// True when a running process's command line mentions `needle`.
-fn process_running_with(needle: &str) -> bool {
+/// The command line of every running process, one per line. `ps` on unix; Windows has no `ps`, so
+/// PowerShell reads the same information from WMI.
+#[cfg(unix)]
+fn process_command_lines() -> String {
     let ps = Command::new("ps")
         .args(["-axo", "command="])
         .output()
         .expect("ps must be available");
-    text(&ps.stdout).lines().any(|line| line.contains(needle))
+    text(&ps.stdout)
+}
+
+#[cfg(windows)]
+fn process_command_lines() -> String {
+    let ps = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command"])
+        .arg("Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }")
+        .output()
+        .expect("powershell must be available");
+    text(&ps.stdout)
+}
+
+/// True when a running process's command line mentions `needle`.
+fn process_running_with(needle: &str) -> bool {
+    process_command_lines()
+        .lines()
+        .any(|line| line.contains(needle))
+}
+
+/// Kills every process whose command line mentions `needle`: SIGKILL on unix, TerminateProcess on
+/// Windows. True when at least one process was found and killed.
+#[cfg(unix)]
+fn kill_processes_with(needle: &str) -> bool {
+    Command::new("pkill")
+        .args(["-KILL", "-f", needle])
+        .status()
+        .unwrap()
+        .success()
+}
+
+#[cfg(windows)]
+fn kill_processes_with(needle: &str) -> bool {
+    // The needle goes in an environment variable so that no PowerShell quoting is needed.
+    let out = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command"])
+        .arg("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:OUNCE_HB_E2E_NEEDLE) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; $_.ProcessId }")
+        .env("OUNCE_HB_E2E_NEEDLE", needle)
+        .output()
+        .unwrap();
+    out.status.success() && !text(&out.stdout).trim().is_empty()
 }
 
 #[test]
@@ -298,8 +352,9 @@ fn wall_clock_timeout_exits_4_and_kills_ounce_core() {
 }
 
 /// Code 1. ounce-core prints nothing listed when the OS kills it: this is the one way a real run ends
-/// with no recognised line. The test kills the real ounce-core process with SIGKILL from outside, as
-/// the out-of-memory killer would, and checks that ounce-hb reports it as unrecognised with exit 1.
+/// with no recognised line. The test kills the real ounce-core process from outside, as the
+/// out-of-memory killer would (SIGKILL on unix, TerminateProcess on Windows), and checks that
+/// ounce-hb reports it as unrecognised with exit 1.
 #[test]
 fn signal_killed_ounce_core_is_unrecognised_exit_1() {
     let Some(core) = core_bin("signal_killed_ounce_core_is_unrecognised_exit_1") else {
@@ -310,7 +365,7 @@ fn signal_killed_ounce_core_is_unrecognised_exit_1() {
     fs::write(&nro_path, nro(&[SPIN], None)).unwrap();
     let child = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
         .env(CORE_BIN_ENV, &core)
-        .env("TMPDIR", dir.join("tmp"))
+        .envs(temp_dir_env(&dir.join("tmp")))
         .env("OUNCE_NRO_BUDGET", "100000000000")
         .env("OUNCE_HB_TIMEOUT_SECS", "60")
         .arg("run")
@@ -329,16 +384,19 @@ fn signal_killed_ounce_core_is_unrecognised_exit_1() {
         );
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    let killed = Command::new("pkill")
-        .args(["-KILL", "-f", &needle])
-        .status()
-        .unwrap();
-    assert!(killed.success(), "pkill found no ounce-core process");
+    assert!(
+        kill_processes_with(&needle),
+        "no ounce-core process was found to kill for {needle}"
+    );
     let out = child.wait_with_output().unwrap();
     let err = text(&out.stderr);
     assert_eq!(out.status.code(), Some(1), "stderr:\n{err}");
     assert!(err.contains("does not recognise"), "{err}");
+    // Only unix reports a signal. On Windows the kill sets an exit code, which ounce-hb prints as is.
+    #[cfg(unix)]
     assert!(err.contains("killed by a signal"), "{err}");
+    #[cfg(windows)]
+    assert!(err.contains("ounce-core exit code: 1."), "{err}");
     assert!(err.contains("To reproduce: ounce-hb run "), "{err}");
     let _ = fs::remove_dir_all(dir);
 }
@@ -377,12 +435,8 @@ fn invalid_timeout_override_exits_2_without_core() {
 
 #[test]
 fn ounce_core_that_cannot_be_started_exits_5() {
-    use std::os::unix::fs::PermissionsExt;
     let dir = work_dir("hostio");
-    // A regular file without the execute bit: found, but the spawn fails.
-    let not_exec = dir.join("ounce-core-not-executable");
-    fs::write(&not_exec, b"not a program").unwrap();
-    fs::set_permissions(&not_exec, fs::Permissions::from_mode(0o644)).unwrap();
+    let not_exec = not_a_program(&dir);
     let out = run_hb(
         &dir,
         &nro(&[MOV_W0_0, SVC_EXIT_PROCESS], None),
@@ -392,6 +446,24 @@ fn ounce_core_that_cannot_be_started_exits_5() {
     );
     expect_stop_refused(&out, 5, "could not run ounce-core");
     let _ = fs::remove_dir_all(dir);
+}
+
+/// A file that `find_core` accepts but the OS cannot run, so the spawn fails. On unix it has no
+/// execute bit. On Windows it is a `.exe` whose contents are not a program.
+#[cfg(unix)]
+fn not_a_program(dir: &Path) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join("ounce-core-not-executable");
+    fs::write(&path, b"not a program").unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    path
+}
+
+#[cfg(windows)]
+fn not_a_program(dir: &Path) -> PathBuf {
+    let path = dir.join("ounce-core-not-executable.exe");
+    fs::write(&path, b"not a program").unwrap();
+    path
 }
 
 /// For refusals and host errors: the exit code and phrase, with no reproduce line required.

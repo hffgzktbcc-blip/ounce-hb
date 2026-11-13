@@ -1,6 +1,6 @@
 name: ounce-core-e2e
-# Runs the end-to-end tests against the real ounce-core v0.8.0 release binary. Kept separate from
-# ci.yml so that a change here cannot touch the main check job.
+# Runs the end-to-end tests against the real ounce-core v0.8.0 release binary on Linux, macOS and
+# Windows. Kept separate from ci.yml so that a change here cannot touch the main check job.
 on:
   push:
     branches: [main]
@@ -27,13 +27,23 @@ jobs:
           - os: macos-latest
             name: macos-arm64
             asset: ounce-core-macos-arm64.tar.gz
+          - os: windows-latest
+            name: windows-x86_64
+            asset: ounce-core-windows-x86_64.zip
+    defaults:
+      run:
+        shell: bash
     steps:
+      # Note: On Windows runners, git defaults to core.autocrlf=true, which converts repository
+      # LF line endings to CRLF on checkout. The fixtures are compared byte for byte, so disable it.
+      - name: Configure Git line endings
+        run: git config --global core.autocrlf false
+
       # actions/checkout v7.0.1; same pinned SHA as ci.yml.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Download ounce-core and verify its sha256
-        shell: bash
         env:
           ASSET: ${{ matrix.asset }}
         run: |
@@ -41,28 +51,48 @@ jobs:
           base="https://github.com/hffgzktbcc-blip/ounce-core/releases/download/${OUNCE_CORE_VERSION}"
           dir="$RUNNER_TEMP/ounce-core"
           mkdir -p "$dir"
-          cd "$dir"
-          curl -sSfL -o SHA256SUMS "$base/SHA256SUMS"
-          curl -sSfL -o "$ASSET" "$base/$ASSET"
-          expected=$(awk -v f="$ASSET" '$2 == f { print $1 }' SHA256SUMS)
+          curl -sSfL -o "$dir/SHA256SUMS" "$base/SHA256SUMS"
+          curl -sSfL -o "$dir/$ASSET" "$base/$ASSET"
+          expected=$(awk -v f="$ASSET" '$2 == f { print $1 }' "$dir/SHA256SUMS")
           if [ -z "$expected" ]; then
             echo "SHA256SUMS has no entry for $ASSET" >&2
             exit 1
           fi
           if command -v sha256sum >/dev/null 2>&1; then
-            actual=$(sha256sum "$ASSET" | awk '{ print $1 }')
+            actual=$(sha256sum "$dir/$ASSET" | awk '{ print $1 }')
           else
-            actual=$(shasum -a 256 "$ASSET" | awk '{ print $1 }')
+            actual=$(shasum -a 256 "$dir/$ASSET" | awk '{ print $1 }')
           fi
           if [ "$actual" != "$expected" ]; then
             echo "sha256 mismatch for $ASSET: expected $expected, got $actual" >&2
             exit 1
           fi
           echo "sha256 verified for $ASSET"
-          tar -xzf "$ASSET" ounce-core
-          chmod +x ounce-core
-          ./ounce-core --version | head -3
-          echo "OUNCE_CORE_BIN=$dir/ounce-core" >> "$GITHUB_ENV"
+          echo "OUNCE_CORE_DIR=$dir" >> "$GITHUB_ENV"
+      - name: Extract ounce-core (unix)
+        if: runner.os != 'Windows'
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: |
+          set -euo pipefail
+          tar -xzf "$OUNCE_CORE_DIR/$ASSET" -C "$OUNCE_CORE_DIR" ounce-core
+          chmod +x "$OUNCE_CORE_DIR/ounce-core"
+          "$OUNCE_CORE_DIR/ounce-core" --version | head -3
+          echo "OUNCE_CORE_BIN=$OUNCE_CORE_DIR/ounce-core" >> "$GITHUB_ENV"
+      - name: Extract ounce-core (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = $env:OUNCE_CORE_DIR
+          Expand-Archive -LiteralPath (Join-Path $dir $env:ASSET) -DestinationPath $dir -Force
+          $bin = Join-Path $dir 'ounce-core.exe'
+          if (-not (Test-Path $bin)) { throw "ounce-core.exe is not in $env:ASSET" }
+          & $bin --version | Select-Object -First 3
+          if ($LASTEXITCODE -ne 0) { throw "ounce-core --version exited $LASTEXITCODE" }
+          Add-Content -Path $env:GITHUB_ENV -Value "OUNCE_CORE_BIN=$bin"
       - name: Toolchain
         run: |
           rustup show active-toolchain || rustup toolchain install stable --profile minimal -c rustfmt -c clippy
@@ -71,6 +101,18 @@ jobs:
         run: |
           set -o pipefail
           cargo test --locked --test ounce_core_run --test ounce_core_e2e --test guest_args -- --nocapture 2>&1 | tee e2e.log
+          # Counts for the job summary. A test that returned early prints SKIPPED, and so does
+          # the test harness's own line for a skipped test; `grep -c` exits 1 on zero matches.
+          passed=$(awk '/^test result:/ { for (i = 1; i <= NF; i++) if ($i == "passed;") s += $(i - 1) } END { print s + 0 }' e2e.log)
+          failed=$(awk '/^test result:/ { for (i = 1; i <= NF; i++) if ($i == "failed;") s += $(i - 1) } END { print s + 0 }' e2e.log)
+          skipped=$(grep -c "SKIPPED" e2e.log || true)
+          {
+            echo "### e2e (${{ matrix.name }}, ${{ matrix.os }})"
+            echo ""
+            echo "- tests passed: $passed"
+            echo "- tests failed: $failed"
+            echo "- tests skipped (SKIPPED lines): $skipped"
+          } >> "$GITHUB_STEP_SUMMARY"
           # A skipped test passes silently, so refuse a run where ounce-core was not used.
           if grep -q "SKIPPED" e2e.log; then
             echo "an end-to-end test was skipped; ounce-core was not exercised" >&2

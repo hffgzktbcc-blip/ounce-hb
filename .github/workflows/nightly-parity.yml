@@ -1,0 +1,91 @@
+name: nightly-parity
+
+# Runs scripts/corpus_parity.py nightly against the ounce-core v0.8.1 release. The report is kept as
+# an artifact. The run fails only when a program that tests/parity/baseline.json records as matching
+# stops matching. Corpus NROs are not built in this job, so programs without an NRO under
+# ounce-core/tests/corpus/builds are reported as not evaluated (see docs/CORPUS_PARITY.md).
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CORE_TAG: v0.8.1
+  CORE_ASSET: ounce-core-linux-x86_64.tar.gz
+  CORE_SHA256: d55af1ad1dd3f5f331e20c696e49e37f93a7ce1d4e93a8c33122310aa2ce0839
+  CARGO_TERM_COLOR: always
+
+jobs:
+  parity:
+    name: corpus parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # actions/checkout v7.0.1; full commit SHA verified against the upstream release tag.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      # The ounce-core source at the same tag, read for the corpus registry (the exit-code table comes from ounce-hb).
+      # actions/checkout v7.0.1 (see above).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: hffgzktbcc-blip/ounce-core
+          ref: ${{ env.CORE_TAG }}
+          path: ounce-core
+          persist-credentials: false
+
+      - name: Download the ounce-core Linux release and verify its SHA-256
+        env:
+          BASE: https://github.com/hffgzktbcc-blip/ounce-core/releases/download/${{ env.CORE_TAG }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/ounce-core-release"
+          mkdir -p "$dir"
+          cd "$dir"
+          curl -fsSL --proto '=https' --tlsv1.2 -o SHA256SUMS "$BASE/SHA256SUMS"
+          curl -fsSL --proto '=https' --tlsv1.2 -o "$CORE_ASSET" "$BASE/$CORE_ASSET"
+          grep -F "  $CORE_ASSET" SHA256SUMS > expected.sha256
+          test "$(wc -l < expected.sha256)" -eq 1
+          expected=$(awk '{ print $1 }' expected.sha256)
+          test "$expected" = "$CORE_SHA256"
+          sha256sum -c expected.sha256
+          tar -xzf "$CORE_ASSET" -C "$dir" ounce-core
+          chmod 0755 "$dir/ounce-core"
+          echo "OUNCE_CORE_BIN=$dir/ounce-core" >> "$GITHUB_ENV"
+          "$dir/ounce-core" --version < /dev/null
+
+      - name: Toolchain
+        run: |
+          rustup show active-toolchain || rustup toolchain install stable --profile minimal -c rustfmt -c clippy
+          rustc --version
+
+      - name: Build ounce-hb
+        run: cargo build --release --locked
+
+      - name: Unit tests for the comparison
+        run: python3 -m unittest discover -s tests/parity -v
+
+      - name: Corpus parity
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/parity"
+          python3 scripts/corpus_parity.py \
+            --ounce-core-dir ounce-core \
+            --ounce-hb target/release/ounce-hb \
+            --report "$RUNNER_TEMP/parity/corpus-parity-report.json" \
+            --summary "$RUNNER_TEMP/parity/corpus-parity-summary.txt"
+
+      - name: Upload the report
+        # actions/upload-artifact v7.0.2; full commit SHA verified against the upstream release tag.
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: corpus-parity-report
+          path: ${{ runner.temp }}/parity/
+          if-no-files-found: warn
+          retention-days: 30

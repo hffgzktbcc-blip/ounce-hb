@@ -1,0 +1,3 @@
+error: 'run-nro' needs the path of a homebrew .nro file.
+Example: ounce-core run-nro path/to/program
+Run 'ounce-core help' for all options.

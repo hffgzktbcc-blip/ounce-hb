@@ -29,6 +29,7 @@ As of Milestone M0:
   - Captures and forwards guest stdout, stderr, and exit status.
   - Enforces a 60-second wall-clock timeout on guest runs.
   - Refuses guest arguments starting with `-` to avoid silent argument dropping by upstream `ounce-core`.
+  - Explains abnormal stops (unimplemented instruction, memory fault, svcBreak, unhandled SVC, budget, loader error, timeout, missing ounce-core) with a documented exit code per category; see [DIAGNOSIS.md](DIAGNOSIS.md).
 - **Quality & Safety Invariants**:
   - Enforces `#![forbid(unsafe_code)]` in the main crate.
   - Automated guardrails script (`scripts/guardrails.sh`) ensures zero unregistered binaries and zero key/decryption code.
@@ -45,3 +46,4 @@ The following features are not yet implemented in M0:
 - **Interactive Input**: Controller, touch, or HID input handling is not implemented.
 - **Networking**: BSD socket emulation and network communication services are not implemented.
 - **32-bit Support**: Only 64-bit ARM (AArch64) homebrew executables are supported; 32-bit (AArch32) executables are not supported.
+- **Stop Explanations**: Only the ounce-core v0.8.0 stop lines listed in [DIAGNOSIS.md](DIAGNOSIS.md) are recognised. Another ounce-core version may word them differently; such a run is reported as unrecognised with its output kept, not explained.

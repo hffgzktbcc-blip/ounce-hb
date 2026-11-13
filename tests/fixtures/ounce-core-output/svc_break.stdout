@@ -1,0 +1,21 @@
+============================================================
+  OUNCE-CORE: NVIDIA Tegra T239 / Horizon Research Runtime
+  Target: ARMv8.5-A AArch64 (PAC + BTI) | Horizon OS 64-bit Microkernel
+============================================================
+
+[Loader] Reading package/executable: svc_break.nro
+[BootLoader] Successfully loaded package:
+  Format      : NRO0
+  Title ID    : 0x0000000000000000
+  Code size   : 0x0000008C (140 bytes)
+  MOD0 relocs : 0
+[VM] Starting execution at PC: 0x0000000080000000
+[VM] Stack Pointer: 0x0000007FFFFFE000
+
+[VM] Hit svcBreak: reason=0x7FFF0000, info1=0x7FFFFFE000, info2=0x4
+[VM] Break PC: 0x000000008000008C
+[VM] Break result unreadable: Unmapped memory access at virtual address: 0x0000007FFFFFE000
+[VM Summary] Executed 4 instructions in 41.2208ms (0.00 MIPS) | Frames: 0
+  -> Basic-Block JIT Cache: 2 Blocks (4 Insns) | Hits: 2 | Misses: 2
+  -> Memory Buckets (266788 KB): Code=8 KB | VRAM=3600 KB | Stack/TLS=1028 KB | Data=262152 KB
+  -> Final X0: 2147418112 (0x000000007FFF0000) | D0: 0.00

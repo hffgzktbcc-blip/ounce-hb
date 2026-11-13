@@ -1,0 +1,17 @@
+============================================================
+  OUNCE-CORE: NVIDIA Tegra T239 / Horizon Research Runtime
+  Target: ARMv8.5-A AArch64 (PAC + BTI) | Horizon OS 64-bit Microkernel
+============================================================
+
+[Loader] Reading package/executable: unimpl.nro
+[BootLoader] Successfully loaded package:
+  Format      : NRO0
+  Title ID    : 0x0000000000000000
+  Code size   : 0x00000084 (132 bytes)
+  MOD0 relocs : 0
+[VM] Starting execution at PC: 0x0000000080000000
+[VM] Stack Pointer: 0x0000007FFFFFE000
+[VM Summary] Executed 1 instructions in 42.3609ms (0.00 MIPS) | Frames: 0
+  -> Basic-Block JIT Cache: 2 Blocks (2 Insns) | Hits: 0 | Misses: 2
+  -> Memory Buckets (266788 KB): Code=8 KB | VRAM=3600 KB | Stack/TLS=1028 KB | Data=262152 KB
+  -> Final X0: 2147418112 (0x000000007FFF0000) | D0: 0.00

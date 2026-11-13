@@ -90,9 +90,17 @@ class CommentTests(unittest.TestCase):
         self.assertIn("**Version**", text)
         self.assertNotIn("**Homebrew Program**", text)
 
-    def test_duplicates_are_listed(self):
+    def test_duplicates_are_listed_by_number(self):
         text = ti.build_comment("alice", [], [(4, "Relocation crash on start")])
-        self.assertIn("- #4: Relocation crash on start", text)
+        self.assertIn("- #4", text)
+        self.assertNotIn("Relocation crash on start", text)
+
+    def test_other_titles_are_not_echoed(self):
+        hostile = "@victim1 @victim2 ![](http://x.example/track.png)"
+        text = ti.build_comment("alice", [], [(4, hostile)])
+        self.assertNotIn("@victim1", text)
+        self.assertNotIn("![]", text)
+        self.assertNotIn("http://x.example", text)
 
 
 class FindDuplicatesTests(unittest.TestCase):

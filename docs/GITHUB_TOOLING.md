@@ -146,7 +146,8 @@ The repository includes the following GitHub Actions workflows under `.github/wo
   - Posts a missing-details comment on newly opened issues (program, version, command, output) and flags potential duplicates. It never closes or locks anything, and it skips items the scope policy will close.
   - Logic: `scripts/triage_issue.py`. A field counts as present only when the issue form section has content, or the text has a specific signal (a `.nro`/`.nso`/`.elf` name or GitHub repository URL; a `v1.2.3` tag, a `commit` hash or a hex hash with digits and letters; `cargo run`, `ounce-hb run`, or a shell fence; `exit code N`, `panicked`, `error:`, `stderr`). A bare word such as "app" or "version" does not count.
 - **`policy.yml`**:
-  - Applies the scope rule (CONTRIBUTING.md section 1) to newly opened issues and pull requests, and to newly created discussions, from anyone other than the repository owner or a bot. Logic and tests: `scripts/triage_policy.py`.
+  - Applies the scope rule (CONTRIBUTING.md section 1) to newly opened and edited issues and pull requests, and to newly created and edited discussions, from anyone other than the repository owner or a bot. Logic and tests: `scripts/triage_policy.py`.
+  - Never closes or locks by default. Closing and locking are opt-in: set the repository variable `POLICY_AUTOCLOSE` to `true` (Settings, Secrets and variables, Actions, Variables). Any other value, or no value, leaves auto-close off.
   - Uses `pull_request_target`. It checks out only the default branch, never the pull request, and passes all item text through environment variables.
   - Permissions: `contents: read`, `issues: write`, `pull-requests: write`, `discussions: write`.
 
@@ -154,21 +155,22 @@ The repository includes the following GitHub Actions workflows under `.github/wo
 
 | Verdict | When | Action |
 | :--- | :--- | :--- |
-| `close` | A sentence names a protected term (console keys such as a key file or "keys dump", firmware, NSP/XCI/NCA or retail games, piracy, DRM or circumvention) **and** asks for it (for example "dump", "download", "share", "where can I get", "add support", "I want to run"), with no negation or refusal in that sentence. | Comment quoting the policy and linking CONTRIBUTING.md; label `area: legal`; close (issues as *not planned*; pull requests have no reason field; discussions use GitHub's *outdated* reason, since discussions have no *not planned*); lock. |
-| `needs-owner-decision` | A protected term appears without a request, or with negation or refusal (for example "should refuse ... with a clear error"), or only in a bug report. | Label `needs-owner-decision` only. No comment, no close. |
+| `flag` | A sentence names a protected term (console keys such as a key file or "keys dump", firmware including `OFW`, NSP/XCI/NCA or retail games including plurals and spaced forms, game dumps and cartridge backups, piracy, DRM or circumvention) **and** a verb of acquisition, support or use sits next to it (at most two words before the term, or directly after it), with no negation or refusal in that sentence. | Labels `area: legal` and `needs-owner-decision`. A newly opened item also gets the policy comment, once. Nothing is closed or locked. With `POLICY_AUTOCLOSE=true`, a newly opened item is also closed (issues as *not planned*; pull requests have no reason field; discussions use GitHub's *outdated* reason, since discussions have no *not planned*) and locked. |
+| `needs-owner-decision` | A protected term appears without such a verb next to it, or with negation or refusal (for example "should refuse ... with a clear error"), or only in a bug report. | Label `needs-owner-decision` only. No comment, no close. |
 | `none` | No protected term. | Nothing. |
 
-- Checkbox lines (`- [x] ...`) and HTML comments are ignored, because issue forms and the pull request template repeat the policy wording there.
+- An edited item is judged again, but it only gets labels. It never gets a comment, and it is never closed or locked, whatever `POLICY_AUTOCLOSE` says.
+- Before judging, the text is normalised: zero-width and format characters are removed, and fullwidth and Cyrillic or Greek look-alike letters are folded to Latin. Checkbox lines and HTML comments count as text, except the exact checkbox labels that the issue forms and the pull request template contain. Those labels are listed in `scripts/triage_policy.py`, and a test fails if one stops matching the templates.
 - The owner and bot accounts are never judged.
 - Labels must exist in the repository; run `scripts/setup_github.sh --apply` first. Discussions need the label ID, so a missing label fails the run.
-- The classifier is deliberately conservative. A false negative is labelled for the owner; only a clear request is closed.
+- This is a text match. It can miss a request split across sentences, and it can flag a harmless sentence. A maintainer makes the decision either way; that is why the default never closes.
 
 ### Reopening a wrongly closed item
 
-Maintainers can reverse a mistaken closure. A locked item cannot be reopened until it is unlocked.
+Maintainers decide flagged items. If auto-close is on, or a maintainer closed an item, a locked item cannot be reopened until it is unlocked.
 
 1. **Unlock:** on the item, select **Unlock conversation** (under the lock or conversation menu). For a pull request, use the same control in the pull request sidebar or conversation menu.
 2. **Reopen:** select **Reopen issue**, **Reopen pull request**, or **Reopen discussion**.
 3. **Clean up:** remove the `area: legal` label, and the `needs-owner-decision` label if it applies. Then reply to the author.
 
-The bot's comment says a maintainer can unlock and reopen. The bot does not undo its own action.
+The bot's comment says a maintainer decides whether the item stays open. The bot never undoes an action: it adds labels and comments, and it closes only when `POLICY_AUTOCLOSE` is `true`.

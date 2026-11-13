@@ -7,7 +7,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -61,16 +61,16 @@ impl Backend for Subprocess {
         if let Some(bad) = args.iter().find(|a| a.starts_with('-')) {
             return Err(RunError::UnsupportedArg(bad.clone()));
         }
-        let mut child = Command::new(&self.bin)
-            .arg("run-nro")
+        let mut cmd = Command::new(&self.bin);
+        cmd.arg("run-nro")
             .arg(nro)
             .arg(HEADLESS)
             .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| RunError::Io(format!("cannot start {}: {e}", self.bin.display())))?;
+            .stderr(Stdio::piped());
+
+        let mut child = spawn_cmd(&mut cmd, &self.bin)?;
 
         // Drain both pipes on their own threads so a chatty guest cannot block on a full pipe.
         let stdout = child.stdout.take();
@@ -103,6 +103,24 @@ impl Backend for Subprocess {
             stderr: String::from_utf8_lossy(&err_reader.join().unwrap_or_default()).into_owned(),
         })
     }
+}
+
+fn spawn_cmd(cmd: &mut Command, bin: &Path) -> Result<Child, RunError> {
+    #[cfg(target_os = "linux")]
+    {
+        for _ in 0..10 {
+            match cmd.spawn() {
+                Ok(child) => return Ok(child),
+                Err(e) if e.raw_os_error() == Some(26) => {
+                    thread::yield_now();
+                    continue;
+                }
+                Err(e) => return Err(RunError::Io(format!("cannot start {}: {e}", bin.display()))),
+            }
+        }
+    }
+    cmd.spawn()
+        .map_err(|e| RunError::Io(format!("cannot start {}: {e}", bin.display())))
 }
 
 fn read_all<R: Read>(pipe: Option<R>) -> Vec<u8> {
@@ -161,12 +179,15 @@ pub(crate) struct Staged {
 impl Staged {
     pub(crate) fn create(bytes: &[u8]) -> Result<Self, RunError> {
         let dir = std::env::temp_dir().join(unique_name("run"));
-        let mut builder = fs::DirBuilder::new();
         #[cfg(unix)]
-        {
+        let builder = {
             use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
-        }
+            let mut b = fs::DirBuilder::new();
+            b.mode(0o700);
+            b
+        };
+        #[cfg(not(unix))]
+        let builder = fs::DirBuilder::new();
         builder
             .create(&dir)
             .map_err(|e| RunError::Io(format!("cannot create {}: {e}", dir.display())))?;
@@ -280,14 +301,19 @@ mod tests {
         ));
     }
 
-    /// Writes an executable `sh` script. The file handle is closed before it is run.
+    /// Writes an executable `sh` script. The file handle is closed and synced before it is run.
     #[cfg(unix)]
     fn fake_core(body: &str) -> PathBuf {
+        use std::io::Write;
         use std::os::unix::fs::PermissionsExt;
         let dir = std::env::temp_dir().join(unique_name("fake"));
         fs::create_dir_all(&dir).unwrap();
         let bin = dir.join("ounce-core");
-        fs::write(&bin, format!("#!/bin/sh\n{body}\n")).unwrap();
+        let mut file = fs::File::create(&bin).unwrap();
+        file.write_all(format!("#!/bin/sh\n{body}\n").as_bytes())
+            .unwrap();
+        file.sync_all().unwrap();
+        drop(file);
         fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
         bin
     }

@@ -2,7 +2,9 @@
 //! output. The fixtures in tests/fixtures/ounce-core-output are captures; NOTES.md there says how each
 //! was produced.
 
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::Command;
 use std::time::Duration;
 

@@ -1,0 +1,165 @@
+name: Issue triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  triage:
+    if: |
+      github.event.repository.private == false &&
+      github.event.issue.user.type != 'Bot' &&
+      github.event.sender.type != 'Bot' &&
+      github.event.sender.login != github.repository_owner
+    name: Issue triage
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Triage opened issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+
+          TRIAGE_MARKER = '<!-- ounce-hb-issue-triage-v1 -->'
+
+          repo = os.environ.get('GH_REPO')
+          issue_num = os.environ.get('ISSUE_NUMBER')
+          title = os.environ.get('ISSUE_TITLE', '')
+          body = os.environ.get('ISSUE_BODY', '')
+          author = os.environ.get('ISSUE_AUTHOR', '')
+
+          if not repo or not issue_num:
+              print("Missing issue information; exiting.")
+              sys.exit(0)
+
+          # Parse markdown form sections
+          sections = {}
+          current_heading = None
+          current_content = []
+          for line in (body or '').splitlines():
+              m = re.match(r'^###\s+(.+)$', line.strip())
+              if m:
+                  if current_heading:
+                      sections[current_heading] = '\n'.join(current_content).strip()
+                  current_heading = m.group(1).strip().lower()
+                  current_content = []
+              elif current_heading is not None:
+                  current_content.append(line)
+          if current_heading:
+              sections[current_heading] = '\n'.join(current_content).strip()
+
+          combined = f"{title}\n{body or ''}".lower()
+
+          has_program = False
+          has_version = False
+          has_command = False
+          has_output = False
+
+          # Check form headers
+          for h, content in sections.items():
+              if not content or content == '_no response_':
+                  continue
+              if 'program' in h or 'homebrew' in h:
+                  has_program = True
+              if 'version' in h or 'commit' in h or 'release' in h:
+                  has_version = True
+              if 'command' in h or 'repro' in h or 'step' in h:
+                  has_command = True
+              if 'output' in h or 'log' in h or 'behavior' in h or 'expected' in h or 'observed' in h:
+                  has_output = True
+
+          # Fallback regex checks
+          if not has_program:
+              if re.search(r'\b[\w-]+\.(nro|nso|elf)\b', combined) or 'homebrew' in combined or 'app' in combined:
+                  has_program = True
+          if not has_version:
+              if re.search(r'\b(v\d+\.\d+|commit\s+[0-9a-f]{7,40}|[0-9a-f]{7,40}|version)\b', combined):
+                  has_version = True
+          if not has_command:
+              if re.search(r'\b(cargo\s+run|ounce-hb)\b', combined) or '```sh' in (body or '') or '```shell' in (body or ''):
+                  has_command = True
+          if not has_output:
+              if any(k in combined for k in ('error', 'exit code', 'panic', 'output:', 'failed', 'thread')):
+                  has_output = True
+
+          missing = []
+          if not has_program:
+              missing.append('**Homebrew Program**: The name or link to the homebrew NRO/NSO built with devkitPro/libnx.')
+          if not has_version:
+              missing.append('**Version**: The commit hash or release tag of ounce-hb.')
+          if not has_command:
+              missing.append('**Command**: The exact command line used (for example, `cargo run -- run path/to/app.nro`).')
+          if not has_output:
+              missing.append('**Output**: The console output or error log observed.')
+
+          # Search for potential duplicate issues
+          duplicates = []
+          try:
+              out = subprocess.check_output(
+                  ['gh', 'api', f'repos/{repo}/issues?state=open&per_page=30'],
+                  text=True, stderr=subprocess.DEVNULL
+              )
+              open_issues = json.loads(out)
+              title_words = set(re.findall(r'\b[a-z0-9_-]{4,}\b', title.lower()))
+              for item in open_issues:
+                  num = str(item.get('number'))
+                  if num == str(issue_num) or item.get('pull_request') is not None:
+                      continue
+                  item_words = set(re.findall(r'\b[a-z0-9_-]{4,}\b', (item.get('title') or '').lower()))
+                  overlap = title_words.intersection(item_words)
+                  if len(overlap) >= 2:
+                      duplicates.append((item.get('number'), item.get('title')))
+          except Exception as e:
+              print(f"Warning: failed to query open issues: {e}", file=sys.stderr)
+
+          # Format comment
+          lines = [
+              TRIAGE_MARKER,
+              f"Thank you @{author} for opening this issue.",
+              "",
+          ]
+
+          if missing:
+              lines.append("### Missing reproduction details")
+              lines.append("To help verify and investigate this homebrew report, please provide the following missing details:")
+              for m in missing:
+                  lines.append(f"- {m}")
+              lines.append("")
+          else:
+              lines.append("All expected reproduction details (program, version, command, output) appear to be provided.")
+              lines.append("")
+
+          if duplicates:
+              lines.append("### Potential related open issues")
+              for d_num, d_title in duplicates[:3]:
+                  lines.append(f"- #{d_num}: {d_title}")
+              lines.append("")
+
+          comment_body = '\n'.join(lines).strip()
+
+          try:
+              subprocess.run(
+                  ['gh', 'api', '-X', 'POST', f'repos/{repo}/issues/{issue_num}/comments', '-f', f'body={comment_body}'],
+                  check=True
+              )
+              print(f"Posted triage comment on #{issue_num}.")
+          except subprocess.CalledProcessError as e:
+              print(f"Failed to post triage comment: {e}", file=sys.stderr)
+              sys.exit(1)
+          PY

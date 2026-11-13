@@ -1,16 +1,56 @@
 # ounce-core API needs
 
-`ounce-hb run` validates the input and then needs ounce-core to execute it. ounce-core is
-pinned in `Cargo.toml` (commit `f80d2e4`), but as of that commit it has **no `[lib]` target**:
-`src/main.rs` declares every module (`mod loader; mod kernel; mod cpu; mod mmu; ...`) and
-Cargo reports `ignoring invalid dependency ounce-core which is missing a lib target`.
-ounce-core is not modified by this repo; these are the requests for the ounce-core owner.
+## Status
 
-## Blocking: a library target
-- Add `src/lib.rs` exposing the modules below (the binary can then `use ounce_core::...`).
-  Until then `ounce_hb::run` returns `RunError::CoreApiMissing` for every NRO.
+`ounce-hb run` executes NROs through a **subprocess** backend (`src/backend.rs`). It runs the
+ounce-core CLI as:
 
-## Needed public items (all exist today, but are crate-private)
+```
+ounce-core run-nro <staged copy of the .nro> --present=headless [guest args]
+```
+
+- **Binary lookup:** the `OUNCE_CORE_BIN` environment variable first (it must name a file), then the
+  first `ounce-core` on `PATH`. If neither works, `ounce-hb` exits with code 3 and names the variable.
+- **Input:** the `.nro` is copied to a private temporary file after it passes `classify`, so the
+  program that runs is the validated one. The copy is removed after the run.
+- **Output:** the exit status, stdout and stderr are captured and returned as a typed result.
+  `ounce-hb` prints the captured stdout and stderr, then exits with ounce-core's exit code.
+- **Time limit:** 60 seconds. The process is killed when the limit passes, and the run fails with
+  a timeout error.
+- **Guest arguments:** an argument starting with `-` is refused. ounce-core's `run-nro` silently
+  drops those, so passing them through would hide the change.
+
+### What the exit code means
+
+The exit code is ounce-core's process status, not the guest's return value:
+
+- `0`: the program exited through the loader's exit path (`svcExitProcess`). In a libnx program
+  this is so whatever `main` returns: the `hello` fixture returned `0xBAD0008` and still exited 0.
+- `1`: ounce-core stopped early, for example on a load error or an unimplemented instruction.
+
+A guest that wants to report a result must print it. For example, the `hello` fixture in ounce-core
+writes its result with `svcOutputDebugString`.
+
+Checked against ounce-core **v0.8.0** (tag `v0.8.0`, commit `cf199bc`). The synthetic-NRO test in
+`tests/ounce_core_run.rs` runs whenever an ounce-core binary is available and skips with a message
+otherwise.
+
+### Known gaps
+
+- The CPU engine (`--cpu`), `--sdmc` and `--gui` are not exposed. The subprocess runs ounce-core's
+  defaults, with the display set to headless.
+- The `ounce-core` dependency in `Cargo.toml` is still pinned to commit `f80d2e4`. The subprocess
+  backend does not use it, and it is not the version tested above. Repinning is a separate decision.
+
+## Parked: library backend
+
+A library backend would call ounce-core in-process instead of spawning it. It is not planned now.
+The `Backend` trait in `src/backend.rs` is the seam it would plug into, so nothing else in
+`ounce-hb` has to change. Its prerequisite is still missing: as of v0.8.0, ounce-core has **no
+`[lib]` target**, so `cargo` ignores the dependency and no library item can be imported.
+
+For reference, the items a library backend would need are:
+
 | Need | Where it lives in ounce-core |
 |---|---|
 | Parse and map an NRO, apply relocations | `loader::NroLoader` (`parse_header`, `load_into_memory`) |
@@ -19,14 +59,12 @@ ounce-core is not modified by this repo; these are the requests for the ounce-co
 | CPU engine | `cpu::Cpu`, `cpu::StepResult` |
 | SVC layer and HLE services | `kernel::HorizonKernel`, `kernel::SvcResult` |
 
-## Needed beyond visibility
-- The run loop that glues these together lives inside `main.rs` (`run_file`,
-  `run_native_nro`, `run_vm_internal`). It should move into a library function such as
-  `ounce_core::run_nro(bytes, &RunConfig) -> RunOutcome` returning the exit code and any
-  captured console/log output, with no process exit, no GUI window and no host audio required.
-- A headless mode (no `minifb`/`cpal` initialisation) so CI and `ounce-hb` can run NROs.
-- The loader error type (`loader::LoadError`) public and stable.
+Beyond visibility, the run loop lives in ounce-core's `main.rs` (`run_file`, `run_native_nro`,
+`run_vm_internal`). A library entry point would return the exit code and captured output without
+exiting the process or opening a window, and would have a headless mode that skips `minifb` and
+`cpal` setup.
 
 ## Out of scope on purpose
-ounce-core's key parser (`src/crypto/`) and NCA/XCI/PFS0 containers (`src/loader/nca.rs`)
-are not used by ounce-hb. The owner has decided to remove them from ounce-core.
+
+ounce-core's key parser (`src/crypto/`) and NCA/XCI/PFS0 containers (`src/loader/nca.rs`) are not
+used by ounce-hb. The owner has decided to remove them from ounce-core.

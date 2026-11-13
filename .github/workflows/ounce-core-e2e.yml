@@ -90,7 +90,7 @@ jobs:
           set -euo pipefail
           tar -xzf "$OUNCE_CORE_DIR/$ASSET" -C "$OUNCE_CORE_DIR" ounce-core
           chmod +x "$OUNCE_CORE_DIR/ounce-core"
-          "$OUNCE_CORE_DIR/ounce-core" --version | head -3
+          "$OUNCE_CORE_DIR/ounce-core" --version
           echo "OUNCE_CORE_BIN=$OUNCE_CORE_DIR/ounce-core" >> "$GITHUB_ENV"
       - name: Extract ounce-core (Windows)
         if: runner.os == 'Windows'

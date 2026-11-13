@@ -22,95 +22,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
       - name: Post welcome comment for first-time contributors
         env:
           GH_TOKEN: ${{ github.token }}
-          GITHUB_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           REPO_OWNER: ${{ github.repository_owner }}
           ISSUE_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
           AUTHOR_LOGIN: ${{ github.event.issue.user.login || github.event.pull_request.user.login }}
           IS_PR: ${{ github.event_name == 'pull_request_target' && 'true' || 'false' }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import subprocess
-          import sys
-
-          WELCOME_MARKER = '<!-- ounce-hb-welcome-v1 -->'
-
-          repo = os.environ.get('GH_REPO')
-          author = os.environ.get('AUTHOR_LOGIN')
-          issue_num = os.environ.get('ISSUE_NUMBER')
-          owner = os.environ.get('REPO_OWNER', 'hffgzktbcc-blip')
-          is_pr = os.environ.get('IS_PR') == 'true'
-
-          if not repo or not author or not issue_num:
-              print("Missing required environment variables; skipping.")
-              sys.exit(0)
-
-          if author.lower() == owner.lower() or author.lower().endswith('[bot]'):
-              print(f"Skipping welcome for author {author}.")
-              sys.exit(0)
-
-          # Check if author has prior issues/PRs in the repository
-          try:
-              cmd = ['gh', 'api', f'repos/{repo}/issues?creator={author}&state=all&per_page=100']
-              out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
-              issues = json.loads(out)
-              prior = [i for i in issues if str(i.get('number')) != str(issue_num)]
-              if len(prior) > 0:
-                  print(f"Author {author} has prior contributions; skipping welcome.")
-                  sys.exit(0)
-          except Exception as e:
-              print(f"Warning: failed to query prior issues: {e}", file=sys.stderr)
-              sys.exit(0)
-
-          # Check if welcome comment is already present
-          try:
-              cmd = ['gh', 'api', f'repos/{repo}/issues/{issue_num}/comments?per_page=100']
-              out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
-              comments = json.loads(out)
-              for c in comments:
-                  if WELCOME_MARKER in c.get('body', ''):
-                      print(f"Welcome comment already present on #{issue_num}; skipping.")
-                      sys.exit(0)
-          except Exception as e:
-              print(f"Warning: failed to fetch comments: {e}", file=sys.stderr)
-              sys.exit(0)
-
-          item_type = "pull request" if is_pr else "issue"
-          lines = [
-              WELCOME_MARKER,
-              f"Thank you for opening your first {item_type} in ounce-hb.",
-              "",
-              f"A maintainer will review your {item_type}. In the meantime, you can run local checks with:",
-              "```sh",
-              "cargo fmt --all -- --check",
-              "cargo clippy --workspace --all-targets -- -D warnings",
-              "cargo test --workspace",
-              "scripts/guardrails.sh",
-              "```",
-              "",
-              "Helpful references for contributors:",
-              f"- [Contribution guide](https://github.com/{repo}/blob/main/CONTRIBUTING.md) (clean-room homebrew rules, provenance, AI disclosure)",
-              f"- [Security policy](https://github.com/{repo}/blob/main/SECURITY.md)",
-          ]
-
-          if is_pr:
-              lines.insert(6, "Please ensure any code follows the clean-room homebrew policy (no console keys, firmware, or retail decryption code) and includes AI disclosure if generated with an AI assistant.")
-              lines.insert(7, "")
-
-          body = "\n".join(lines).strip()
-
-          try:
-              subprocess.run(
-                  ['gh', 'api', '-X', 'POST', f'repos/{repo}/issues/{issue_num}/comments', '-f', f'body={body}'],
-                  check=True
-              )
-              print(f"Successfully posted welcome comment on #{issue_num}.")
-          except subprocess.CalledProcessError as e:
-              print(f"Failed to post welcome comment: {e}", file=sys.stderr)
-              sys.exit(1)
-          PY
+        run: python3 scripts/welcome_contributor.py

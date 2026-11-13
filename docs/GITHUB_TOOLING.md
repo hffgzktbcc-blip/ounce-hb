@@ -139,8 +139,36 @@ The repository includes the following GitHub Actions workflows under `.github/wo
   - Triggers on version tags (`v*`). Builds multi-platform release binaries for Linux (`x86_64-unknown-linux-gnu`), macOS (`aarch64-apple-darwin`), and Windows (`x86_64-pc-windows-msvc`).
   - Packages release archives with SHA256 checksums and creates a **DRAFT release only** (preventing inadvertent public release publication).
 - **`welcome.yml`**:
-  - Posts a helpful onboarding comment on the first issue or pull request opened by a new contributor, pointing to clean-room policies and local test commands.
+  - Logic: `scripts/welcome_contributor.py`. Posts a helpful onboarding comment on the first issue or pull request opened by a new contributor, pointing to clean-room policies and local test commands.
 - **`claim.yml`**:
-  - Handles `/claim` and self-assignment requests from contributors on issues labeled `good first issue`.
+  - Logic: `scripts/claim_issue.py`. Handles `/claim` and self-assignment requests from contributors on issues labeled `good first issue`.
 - **`issue-triage.yml`**:
-  - Validates newly opened issue reports, verifies reproduction fields (program, version, command, output), suggests relevant area labels, and flags potential duplicates.
+  - Posts a missing-details comment on newly opened issues (program, version, command, output) and flags potential duplicates. It never closes or locks anything, and it skips items the scope policy will close.
+  - Logic: `scripts/triage_issue.py`. A field counts as present only when the issue form section has content, or the text has a specific signal (a `.nro`/`.nso`/`.elf` name or GitHub repository URL; a `v1.2.3` tag, a `commit` hash or a hex hash with digits and letters; `cargo run`, `ounce-hb run`, or a shell fence; `exit code N`, `panicked`, `error:`, `stderr`). A bare word such as "app" or "version" does not count.
+- **`policy.yml`**:
+  - Applies the scope rule (CONTRIBUTING.md section 1) to newly opened issues and pull requests, and to newly created discussions, from anyone other than the repository owner or a bot. Logic and tests: `scripts/triage_policy.py`.
+  - Uses `pull_request_target`. It checks out only the default branch, never the pull request, and passes all item text through environment variables.
+  - Permissions: `contents: read`, `issues: write`, `pull-requests: write`, `discussions: write`.
+
+### Scope policy behaviour
+
+| Verdict | When | Action |
+| :--- | :--- | :--- |
+| `close` | A sentence names a protected term (console keys such as a key file or "keys dump", firmware, NSP/XCI/NCA or retail games, piracy, DRM or circumvention) **and** asks for it (for example "dump", "download", "share", "where can I get", "add support", "I want to run"), with no negation or refusal in that sentence. | Comment quoting the policy and linking CONTRIBUTING.md; label `area: legal`; close (issues as *not planned*; pull requests have no reason field; discussions use GitHub's *outdated* reason, since discussions have no *not planned*); lock. |
+| `needs-owner-decision` | A protected term appears without a request, or with negation or refusal (for example "should refuse ... with a clear error"), or only in a bug report. | Label `needs-owner-decision` only. No comment, no close. |
+| `none` | No protected term. | Nothing. |
+
+- Checkbox lines (`- [x] ...`) and HTML comments are ignored, because issue forms and the pull request template repeat the policy wording there.
+- The owner and bot accounts are never judged.
+- Labels must exist in the repository; run `scripts/setup_github.sh --apply` first. Discussions need the label ID, so a missing label fails the run.
+- The classifier is deliberately conservative. A false negative is labelled for the owner; only a clear request is closed.
+
+### Reopening a wrongly closed item
+
+Maintainers can reverse a mistaken closure. A locked item cannot be reopened until it is unlocked.
+
+1. **Unlock:** on the item, select **Unlock conversation** (under the lock or conversation menu). For a pull request, use the same control in the pull request sidebar or conversation menu.
+2. **Reopen:** select **Reopen issue**, **Reopen pull request**, or **Reopen discussion**.
+3. **Clean up:** remove the `area: legal` label, and the `needs-owner-decision` label if it applies. Then reply to the author.
+
+The bot's comment says a maintainer can unlock and reopen. The bot does not undo its own action.

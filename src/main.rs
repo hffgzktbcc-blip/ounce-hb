@@ -34,7 +34,17 @@ fn run(path: &str, guest: &[String]) -> ExitCode {
         }
     };
     match ounce_hb::run(kind, &bytes, guest) {
-        Ok(code) => ExitCode::from(code as u8),
+        Ok(out) => {
+            print!("{}", out.stdout);
+            eprint!("{}", out.stderr);
+            match out.exit_code {
+                Some(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+                None => {
+                    eprintln!("ounce-hb: ounce-core was killed by a signal");
+                    ExitCode::from(1)
+                }
+            }
+        }
         Err(e) => {
             eprintln!("ounce-hb: {e}");
             ExitCode::from(3)

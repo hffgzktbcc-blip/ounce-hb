@@ -2,10 +2,19 @@
 
 //! `ounce-hb`: runner for Switch homebrew built from source with devkitPro/libnx.
 //!
-//! M0 scope: classify an input file and reject everything that is not an unencrypted homebrew
-//! NRO or NSO. Layout facts come from the public switchbrew wiki (NRO and NSO pages).
+//! Scope: classify an input file and reject everything that is not an unencrypted homebrew NRO or
+//! NSO, then run NROs through the ounce-core CLI (see [`backend`]). Layout facts come from the
+//! public switchbrew wiki (NRO and NSO pages).
 
 use std::fmt;
+use std::time::Duration;
+
+pub mod backend;
+
+use backend::Staged;
+pub use backend::{
+    Backend, CORE_BIN_ENV, DEFAULT_TIMEOUT, RunOutput, Subprocess, find_core, locate_core,
+};
 
 /// What a file turned out to be.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,27 +81,42 @@ pub fn classify(bytes: &[u8]) -> Result<Kind, Rejection> {
     Err(Rejection::Unrecognized)
 }
 
-/// Outcome of asking the core to run a validated image.
-#[derive(Debug, PartialEq, Eq)]
+/// Why a validated image could not be run. The `Display` text is shown to the user verbatim.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunError {
-    /// ounce-core exposes no library API yet. See docs/OUNCE_CORE_API_NEEDS.md.
-    CoreApiMissing,
+    /// No ounce-core binary was found. See docs/OUNCE_CORE_API_NEEDS.md.
+    CoreNotFound(String),
+    /// ounce-core ran past the time limit and was killed.
+    Timeout(Duration),
+    /// A staging, spawn or wait step failed.
+    Io(String),
+    /// A guest argument starting with '-' that ounce-core would silently drop.
+    UnsupportedArg(String),
     UnsupportedKind(Kind),
 }
 
 impl fmt::Display for RunError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RunError::CoreApiMissing => write!(
+            RunError::CoreNotFound(why) => write!(
                 f,
-                "input is a valid NRO, but execution is not wired yet: ounce-core has no library target, \
-                 so its homebrew loader, MMU, CPU and kernel cannot be called from here. \
-                 Missing API is listed in docs/OUNCE_CORE_API_NEEDS.md."
+                "ounce-core binary not found: {why}. Set OUNCE_CORE_BIN to the binary, or put it on PATH \
+                 (build the ounce-core v0.8.0 CLI). Details: docs/OUNCE_CORE_API_NEEDS.md."
+            ),
+            RunError::Timeout(limit) => write!(
+                f,
+                "ounce-core did not finish within {} s and was killed. The program may be stuck.",
+                limit.as_secs()
+            ),
+            RunError::Io(why) => write!(f, "could not run ounce-core: {why}"),
+            RunError::UnsupportedArg(arg) => write!(
+                f,
+                "guest argument {arg:?} starts with '-'. ounce-core run-nro drops such arguments, so it is refused."
             ),
             RunError::UnsupportedKind(k) => {
                 write!(
                     f,
-                    "{k:?} execution is not supported in M0; only NRO is planned first."
+                    "{k:?} execution is not supported yet; only NRO is supported."
                 )
             }
         }
@@ -101,10 +125,28 @@ impl fmt::Display for RunError {
 
 impl std::error::Error for RunError {}
 
-/// Run a validated image. M0 stub: see docs/OUNCE_CORE_API_NEEDS.md.
-pub fn run(kind: Kind, _bytes: &[u8], _args: &[String]) -> Result<i32, RunError> {
+/// Run a validated image with the default backend (the ounce-core CLI, see [`backend`]).
+pub fn run(kind: Kind, bytes: &[u8], args: &[String]) -> Result<RunOutput, RunError> {
+    if kind != Kind::Nro {
+        return Err(RunError::UnsupportedKind(kind));
+    }
+    let backend = Subprocess::new(locate_core()?, DEFAULT_TIMEOUT);
+    run_with(&backend, kind, bytes, args)
+}
+
+/// Run a validated image with any [`Backend`]. The bytes are copied to a private file first, so the
+/// program that runs is the one that was classified.
+pub fn run_with<B: Backend>(
+    backend: &B,
+    kind: Kind,
+    bytes: &[u8],
+    args: &[String],
+) -> Result<RunOutput, RunError> {
     match kind {
-        Kind::Nro => Err(RunError::CoreApiMissing),
+        Kind::Nro => {
+            let staged = Staged::create(bytes)?;
+            backend.run_nro(staged.path(), args)
+        }
         other => Err(RunError::UnsupportedKind(other)),
     }
 }
@@ -149,9 +191,36 @@ mod tests {
     }
 
     #[test]
-    fn run_stub_names_the_gap() {
-        let e = run(Kind::Nro, &[], &[]).unwrap_err();
-        assert_eq!(e, RunError::CoreApiMissing);
-        assert!(e.to_string().contains("OUNCE_CORE_API_NEEDS"));
+    fn run_refuses_nso_before_looking_for_core() {
+        assert_eq!(
+            run(Kind::Nso, &[], &[]),
+            Err(RunError::UnsupportedKind(Kind::Nso))
+        );
+    }
+
+    #[test]
+    fn run_with_passes_the_staged_nro_to_the_backend() {
+        struct Echo;
+        impl Backend for Echo {
+            fn run_nro(
+                &self,
+                nro: &std::path::Path,
+                args: &[String],
+            ) -> Result<RunOutput, RunError> {
+                let stdout = format!("{}|{}", std::fs::read(nro).unwrap().len(), args.join(","));
+                Ok(RunOutput {
+                    exit_code: Some(0),
+                    stdout,
+                    stderr: String::new(),
+                })
+            }
+        }
+        let bytes = with(0x10, b"NRO0", 0x80);
+        let out = run_with(&Echo, Kind::Nro, &bytes, &["x".to_string()]).unwrap();
+        assert_eq!(out.stdout, format!("{}|x", bytes.len()));
+        assert_eq!(
+            run_with(&Echo, Kind::Nso, &bytes, &[]),
+            Err(RunError::UnsupportedKind(Kind::Nso))
+        );
     }
 }

@@ -23,7 +23,7 @@ reuse one.
 |---|---|---|
 | `0` | clean exit | The guest reached svcExitProcess and ounce-core exited `0`. |
 | `1` | unrecognised | ounce-core stopped in a way this file does not list. Its output is printed unchanged and nothing is inferred from it. Also used when ounce-core was killed by a signal with no recognised line. |
-| `2` | refused | The request was refused before ounce-core ran: a guest argument starting with `-`, an unsupported NSO kind, a malformed `OUNCE_HB_TIMEOUT_SECS`, or an input that is not an unencrypted NRO (also `2` for the input checks that run before this step). |
+| `2` | refused | The request was refused before ounce-core ran: a guest argument starting with `-`, guest arguments longer than 16 KiB together (see [Guest-argument limit](#guest-argument-limit)), an unsupported NSO kind, a malformed `OUNCE_HB_TIMEOUT_SECS`, or an input that is not an unencrypted NRO (also `2` for the input checks that run before this step). |
 | `3` | core missing | No ounce-core binary: `OUNCE_CORE_BIN` is unset or wrong, and no `ounce-core` is on `PATH`. |
 | `4` | timeout | ounce-core ran past the wall-clock limit (60 seconds, or `OUNCE_HB_TIMEOUT_SECS`) and was killed. |
 | `5` | host I/O | ounce-hb could not write its private copy of the program, or could not start or wait on ounce-core. |
@@ -76,6 +76,21 @@ ounce-core's `run-nro` does not report a guest exit status. `svcExitProcess` car
   ounce-core child is killed and reaped before ounce-hb returns. Without the raised budget the default
   50 million instructions run out within about a second, so that loop reports `16`, not `4`.
 
+## Guest-argument limit
+
+The guest arguments together may be at most 16384 bytes. The total counts each argument's bytes plus one
+NUL terminator, as argv strings are laid out in memory. A longer set is refused with exit code `2` before
+ounce-core starts, and the message names the limit. The constant is `MAX_GUEST_ARGS_BYTES` in `src/lib.rs`.
+
+The limit is a workaround for [ounce-core #418](https://github.com/hffgzktbcc-blip/ounce-core/issues/418):
+in v0.8.0, once the argument strings pass about 62,839 bytes, the config block at `0x7FFF0000` runs into the
+program at `0x80000000` and overwrites its first instruction. The limit stays well below that. Remove it only
+after #418 is fixed in a release ounce-hb pins.
+
+Tests: `argument_just_under_the_limit_runs_for_real` (real ounce-core, exit `0`) and
+`argument_over_the_limit_is_refused_before_ounce_core_starts` (exit `2`; a marker file shows that no
+ounce-core process starts), in `tests/guest_args.rs`.
+
 ## Host audio noise on stderr
 
 ounce-core v0.8.0 opens the default host audio device on every run, and it has no flag or variable to
@@ -107,7 +122,7 @@ the ounce-core v0.8.0 binary, or the captured ounce-core output from such a run 
 |---|---|---|---|
 | `0` | clean exit | Yes | `clean_guest_exit_is_zero_with_no_explanation`; fixture `clean` |
 | `1` | unrecognised | Yes, by a real run killed by a signal: ounce-core was sent SIGKILL from outside and printed no stop line (`signal_killed_ounce_core_is_unrecognised_exit_1`; fixture `killed_by_signal.stdout`). No *natural* ounce-core stop reaches this code: every exit path in the `run-nro` flow prints a listed marker. About 1,000 generated runs (random SVC sequences, random code words, random loader inputs) and a few argument-size probes produced no panic and no unlisted stop. |
-| `2` | refused | Yes (real `ounce-hb` run, no ounce-core output involved) | `refused_guest_argument_exits_2_without_core`, `invalid_timeout_override_exits_2_without_core` |
+| `2` | refused | Yes (real `ounce-hb` run, no ounce-core output involved) | `refused_guest_argument_exits_2_without_core`, `invalid_timeout_override_exits_2_without_core`, `argument_over_the_limit_is_refused_before_ounce_core_starts` |
 | `3` | core missing | Yes (real `ounce-hb` run) | `tests/cli.rs` `valid_nro_without_core_binary_reports_it` |
 | `4` | timeout | Yes | `wall_clock_timeout_exits_4_and_kills_ounce_core` |
 | `5` | host I/O | Yes (spawn of a non-executable file fails) | `ounce_core_that_cannot_be_started_exits_5` |

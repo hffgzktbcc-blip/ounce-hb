@@ -66,7 +66,7 @@ A clean guest exit returns `0`. Every other outcome has its own code, so scripts
 |---|---|
 | `0` | Guest program exited normally (svcExitProcess) |
 | `1` | ounce-core stopped in a way ounce-hb does not recognise (raw output is printed unchanged) |
-| `2` | Bad CLI invocation, file unreadable, out-of-scope input (e.g. NSP, XCI, NCA, NPDM, or unrecognized magic), a guest argument starting with `-`, a malformed `OUNCE_HB_TIMEOUT_SECS`, or an unsupported NSO kind |
+| `2` | Bad CLI invocation, file unreadable, out-of-scope input (e.g. NSP, XCI, NCA, NPDM, or unrecognized magic), a guest argument starting with `-`, guest arguments longer than 16 KiB together ([ounce-core #418](https://github.com/hffgzktbcc-blip/ounce-core/issues/418)), a malformed `OUNCE_HB_TIMEOUT_SECS`, or an unsupported NSO kind |
 | `3` | ounce-core binary missing or not found |
 | `4` | Execution timeout (ounce-core killed after 60 seconds, or `OUNCE_HB_TIMEOUT_SECS`) |
 | `5` | ounce-hb could not start, wait on, or stage for ounce-core (host I/O error) |

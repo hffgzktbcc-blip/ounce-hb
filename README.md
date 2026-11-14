@@ -9,7 +9,7 @@ command-line tool by default, or a selected engine subprocess, and explains how 
 
 > **Status: v0.0.1 (Milestone M0)**. The CLI validates input formats and refuses out-of-scope
 > containers. It executes validated NROs via an `ounce-core` subprocess runner in headless mode.
-> See [Usage](#usage), [docs/LIMITS.md](docs/LIMITS.md), and
+> See [Usage](#usage), [docs/HOMEBREW_DEVELOPER_GUIDE.md](docs/HOMEBREW_DEVELOPER_GUIDE.md), [docs/LIMITS.md](docs/LIMITS.md), and
 > [docs/OUNCE_CORE_API_NEEDS.md](docs/OUNCE_CORE_API_NEEDS.md).
 
 ## The Growing Family

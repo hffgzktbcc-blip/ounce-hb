@@ -216,6 +216,21 @@ fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
+fn cmd_escape_echo(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    for ch in line.chars() {
+        match ch {
+            '%' => out.push_str("%%"),
+            '^' | '&' | '<' | '>' | '|' => {
+                out.push('^');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
 #[cfg(unix)]
 fn write_stand_in(
     root: &Path,
@@ -336,14 +351,14 @@ fn write_stand_in(
         if line.is_empty() {
             script.push_str("echo.\r\n");
         } else {
-            let _ = writeln!(script, "echo {line}\r");
+            let _ = writeln!(script, "echo {}\r", cmd_escape_echo(line));
         }
     }
     for line in spec.stderr_lines {
         if line.is_empty() {
             script.push_str(">&2 echo.\r\n");
         } else {
-            let _ = writeln!(script, ">&2 echo {line}\r");
+            let _ = writeln!(script, ">&2 echo {}\r", cmd_escape_echo(line));
         }
     }
     let _ = writeln!(script, "exit /b {}\r", spec.exit_code);
@@ -1498,4 +1513,17 @@ fn opt_in_real_core_and_runtime_libnx_hello_parity() {
             "SKIPPED runtime comparison in opt_in_real_core_and_runtime_libnx_hello_parity: {REAL_RUNTIME_ENV} not set"
         );
     }
+}
+
+#[test]
+fn windows_cmd_echo_escapes_batch_metacharacters() {
+    assert_eq!(
+        cmd_escape_echo("USAGE: engine run <file>"),
+        "USAGE: engine run ^<file^>"
+    );
+    assert_eq!(cmd_escape_echo("a^b&c<d>e|f%g"), "a^^b^&c^<d^>e^|f%%g");
+    assert_eq!(
+        cmd_escape_echo("[VM] Execution budget reached (1000 instructions)."),
+        "[VM] Execution budget reached (1000 instructions)."
+    );
 }

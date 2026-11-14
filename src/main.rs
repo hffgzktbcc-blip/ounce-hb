@@ -7,11 +7,16 @@ use std::process::{Command, ExitCode};
 const USAGE: &str = "\
 usage:
   ounce-hb run [--backend <core|runtime|auto|path>] [--auto] <file.nro> [-- guest args...]
+  ounce-hb repro [--backend <core|runtime|path>] <bundle.json|dir>
   ounce-hb doctor [--json]";
 
 enum Action<'a> {
     Doctor {
         json: bool,
+    },
+    Repro {
+        path: &'a str,
+        backend: Option<&'a str>,
     },
     Run {
         path: &'a str,
@@ -25,6 +30,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse(&args) {
         Ok(Action::Doctor { json }) => run_doctor(json),
+        Ok(Action::Repro { path, backend }) => run_repro(path, backend),
         Ok(Action::Run {
             path,
             guest,
@@ -51,6 +57,38 @@ fn parse(args: &[String]) -> Result<Action<'_>, String> {
                 }
             }
             return Ok(Action::Doctor { json });
+        }
+        Some("repro") => {
+            let mut path = None;
+            let mut backend = None;
+            let mut i = 1;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--backend" => {
+                        if backend.is_some() {
+                            return Err(format!("ounce-hb: duplicate --backend.\n{USAGE}"));
+                        }
+                        i += 1;
+                        backend = args
+                            .get(i)
+                            .map(String::as_str)
+                            .filter(|v| !v.is_empty() && !v.starts_with('-'));
+                        if backend.is_none() {
+                            return Err(format!(
+                                "ounce-hb: --backend requires core, runtime, auto, or a path.\n{USAGE}"
+                            ));
+                        }
+                    }
+                    value if path.is_none() && !value.starts_with('-') => path = Some(value),
+                    other => {
+                        return Err(format!("ounce-hb: unexpected argument {other:?}.\n{USAGE}"));
+                    }
+                }
+                i += 1;
+            }
+            return path
+                .map(|p| Action::Repro { path: p, backend })
+                .ok_or_else(|| USAGE.to_string());
         }
         Some("run") => {}
         _ => return Err(USAGE.to_string()),
@@ -177,6 +215,156 @@ fn run_doctor(json: bool) -> ExitCode {
         ExitCode::from(0)
     } else {
         ExitCode::from(3)
+    }
+}
+
+fn run_repro(path: &str, backend: Option<&str>) -> ExitCode {
+    let root = Path::new(path);
+    let mut manifests = Vec::new();
+    if root.is_dir() {
+        let entries = match std::fs::read_dir(root) {
+            Ok(e) => e,
+            Err(e) => {
+                say_err(&format!("ounce-hb: cannot read {path}: {e}\n"));
+                return ExitCode::from(2);
+            }
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.ends_with(".repro.json") || n == "ounce-repro.json")
+            {
+                manifests.push(p);
+            }
+        }
+        manifests.sort();
+    } else {
+        manifests.push(root.to_path_buf());
+    }
+
+    if manifests.is_empty() {
+        say_err(&format!("ounce-hb: no repro manifests found at {path}\n"));
+        return ExitCode::from(2);
+    }
+
+    let selection = backend
+        .map(std::ffi::OsString::from)
+        .or_else(|| std::env::var_os(ounce_hb::BACKEND_ENV).filter(|v| !v.is_empty()));
+    let engine = selection
+        .as_deref()
+        .map(ounce_hb::Engine::from_selection)
+        .unwrap_or(ounce_hb::Engine::Core);
+
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+    for manifest_path in &manifests {
+        let raw = match std::fs::read_to_string(manifest_path) {
+            Ok(r) => r,
+            Err(e) => {
+                say_err(&format!(
+                    "ounce-hb: failed to read {}: {e}\n",
+                    manifest_path.display()
+                ));
+                failed += 1;
+                continue;
+            }
+        };
+        let Some(manifest) = ounce_hb::report_v1::ReproManifest::parse(&raw) else {
+            say_err(&format!(
+                "ounce-hb: {} is not a valid ounce.repro.v1 manifest\n",
+                manifest_path.display()
+            ));
+            failed += 1;
+            continue;
+        };
+
+        let prog = if Path::new(&manifest.program_path).is_absolute() {
+            std::path::PathBuf::from(&manifest.program_path)
+        } else {
+            manifest_path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or_else(|| Path::new("."))
+                .join(&manifest.program_path)
+        };
+        let bytes = match std::fs::read(&prog) {
+            Ok(b) => b,
+            Err(e) => {
+                say_err(&format!(
+                    "ounce-hb: cannot read program {}: {e}\n",
+                    prog.display()
+                ));
+                failed += 1;
+                continue;
+            }
+        };
+        let kind = match ounce_hb::classify(&bytes) {
+            Ok(k) => k,
+            Err(r) => {
+                say_err(&format!("ounce-hb: rejected {}: {r}\n", prog.display()));
+                failed += 1;
+                continue;
+            }
+        };
+        let out = match ounce_hb::run_engine(&engine, kind, &bytes, &manifest.guest_args) {
+            Ok(o) => o,
+            Err(e) => {
+                say_err(&format!("ounce-hb: repro execution failed: {e}\n"));
+                failed += 1;
+                continue;
+            }
+        };
+        let parsed_report = out
+            .report_json
+            .as_deref()
+            .and_then(ounce_hb::report_v1::ReportV1::parse);
+        let actual_kind = parsed_report
+            .as_ref()
+            .map(|r| r.stop_kind.as_str())
+            .unwrap_or("");
+        let actual_code = parsed_report
+            .as_ref()
+            .map(|r| r.exit_code)
+            .or(out.exit_code);
+
+        let kind_ok = manifest
+            .expected_stop_kind
+            .as_deref()
+            .is_none_or(|exp| exp == actual_kind);
+        let code_ok = manifest
+            .expected_exit_code
+            .is_none_or(|exp| Some(exp) == actual_code);
+
+        if kind_ok && code_ok {
+            passed += 1;
+            println!(
+                "[repro] PASS {} (stop_kind={}, exit_code={:?})",
+                manifest_path.display(),
+                actual_kind,
+                actual_code
+            );
+        } else {
+            failed += 1;
+            say_err(&format!(
+                "[repro] FAIL {}: expected stop_kind={:?} exit_code={:?}, got stop_kind={:?} exit_code={:?}\n",
+                manifest_path.display(),
+                manifest.expected_stop_kind,
+                manifest.expected_exit_code,
+                actual_kind,
+                actual_code
+            ));
+        }
+    }
+
+    if failed > 0 {
+        say_err(&format!(
+            "ounce-hb repro: {passed} passed, {failed} failed.\n"
+        ));
+        ExitCode::from(1)
+    } else {
+        println!("ounce-hb repro: {passed} passed, 0 failed.");
+        ExitCode::from(0)
     }
 }
 

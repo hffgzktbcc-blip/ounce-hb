@@ -143,3 +143,42 @@ fn auto_attributes_guest_bug_when_both_fail_identically() {
     assert!(stderr.contains("attribution = Guest Bug"), "{stderr}");
     assert!(!ws.0.join("ounce-repro.json").exists());
 }
+
+#[test]
+fn repro_replays_bundle_and_verifies_stop_kind() {
+    let ws = TempWorkspace::new("repro-replay");
+    let core = ws.write_script(
+        "core",
+        r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{"schema":"ounce.run.v1","engine":"ounce-core","engine_version":"0.8.2","tier":"interpreter","silent_fallback":false,"stop_kind":"clean_exit","exit_code":0,"pc":null,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":null,"insns_executed":10,"message":null}
+EOF
+exit 0"#,
+    );
+    let manifest = ws.0.join("case.repro.json");
+    fs::write(
+        &manifest,
+        r#"{
+  "schema": "ounce.repro.v1",
+  "program_path": "app.nro",
+  "program_bytes": 128,
+  "guest_args": ["hello"],
+  "runtime": { "tier": "tier3", "stop_kind": "cpu_error", "exit_code": 12 },
+  "core": { "stop_kind": "clean_exit", "exit_code": 0 }
+}"#,
+    )
+    .unwrap();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .args(["repro", ws.0.to_str().unwrap()])
+        .env("OUNCE_CORE_BIN", &core)
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("1 passed, 0 failed"), "{stdout}");
+}

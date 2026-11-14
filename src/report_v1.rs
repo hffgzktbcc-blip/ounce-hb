@@ -161,6 +161,114 @@ pub fn format_repro_bundle(
     )
 }
 
+/// Parsed `ounce.repro.v1` regression manifest for `ounce-hb repro`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReproManifest {
+    pub program_path: String,
+    pub guest_args: Vec<String>,
+    pub expected_stop_kind: Option<String>,
+    pub expected_exit_code: Option<i32>,
+}
+
+impl ReproManifest {
+    /// Parse an `ounce.repro.v1` JSON manifest. Returns `None` if schema does not match.
+    pub fn parse(json: &str) -> Option<Self> {
+        let schema = extract_str(json, "schema")?;
+        if schema != "ounce.repro.v1" {
+            return None;
+        }
+        let program_path = extract_str(json, "program_path")?;
+        let guest_args = extract_str_array(json, "guest_args").unwrap_or_default();
+        let core_section = extract_object_section(json, "core");
+        let expected_stop_kind = core_section.and_then(|s| extract_str(s, "stop_kind"));
+        let expected_exit_code =
+            core_section.and_then(|s| extract_u64(s, "exit_code").map(|v| v as i32));
+        Some(Self {
+            program_path,
+            guest_args,
+            expected_stop_kind,
+            expected_exit_code,
+        })
+    }
+}
+
+fn extract_object_section<'a>(json: &'a str, key: &str) -> Option<&'a str> {
+    let rest = find_field_value(json, key)?;
+    if !rest.starts_with('{') {
+        return None;
+    }
+    let mut depth = 0usize;
+    let mut in_str = false;
+    let mut escaped = false;
+    for (idx, ch) in rest.char_indices() {
+        if in_str {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_str = true,
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&rest[..=idx]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn extract_str_array(json: &str, key: &str) -> Option<Vec<String>> {
+    let rest = find_field_value(json, key)?.strip_prefix('[')?;
+    let mut items = Vec::new();
+    let mut cur = rest.trim_start();
+    while !cur.starts_with(']') {
+        let after_quote = cur.strip_prefix('"')?;
+        let mut val = String::new();
+        let mut consumed = 0usize;
+        let mut chars = after_quote.char_indices();
+        let mut closed = false;
+        while let Some((idx, ch)) = chars.next() {
+            match ch {
+                '"' => {
+                    consumed = idx + 1;
+                    closed = true;
+                    break;
+                }
+                '\\' => {
+                    let (_, esc) = chars.next()?;
+                    match esc {
+                        '"' => val.push('"'),
+                        '\\' => val.push('\\'),
+                        'n' => val.push('\n'),
+                        'r' => val.push('\r'),
+                        't' => val.push('\t'),
+                        other => val.push(other),
+                    }
+                }
+                c => val.push(c),
+            }
+        }
+        if !closed {
+            return None;
+        }
+        items.push(val);
+        cur = after_quote[consumed..].trim_start();
+        if let Some(next) = cur.strip_prefix(',') {
+            cur = next.trim_start();
+        }
+    }
+    Some(items)
+}
+
 pub fn escape_json(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {

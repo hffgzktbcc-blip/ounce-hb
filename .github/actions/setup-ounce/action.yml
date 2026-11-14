@@ -1,0 +1,113 @@
+name: Setup Ounce Family Tools
+description: >
+  Install prebuilt ounce-hb and ounce-core (MIT) releases, with optional
+  ounce-runtime (GPL-3.0-or-later) installation, and verify with ounce-hb doctor.
+
+inputs:
+  ounce-hb-version:
+    description: Release tag for ounce-hb (e.g. v0.0.2 or latest)
+    required: false
+    default: latest
+  ounce-core-version:
+    description: Release tag for ounce-core (e.g. v0.8.2 or latest)
+    required: false
+    default: latest
+  install-runtime:
+    description: >
+      Set to 'true' to also install ounce-runtime (licensed under GPL-3.0-or-later,
+      kept separate from MIT ounce-hb/ounce-core as an external subprocess binary).
+    required: false
+    default: 'false'
+  ounce-runtime-version:
+    description: Release tag for ounce-runtime (e.g. v0.5.0 or latest)
+    required: false
+    default: latest
+
+outputs:
+  bin-dir:
+    description: Directory containing installed Ounce binaries (added to PATH)
+    value: ${{ steps.install.outputs.bin-dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download and install Ounce tools
+      id: install
+      shell: bash
+      env:
+        HB_VER: ${{ inputs.ounce-hb-version }}
+        CORE_VER: ${{ inputs.ounce-core-version }}
+        INSTALL_RUNTIME: ${{ inputs.install-runtime }}
+        RUNTIME_VER: ${{ inputs.ounce-runtime-version }}
+      run: |
+        set -euo pipefail
+
+        case "${RUNNER_OS}" in
+          Linux)
+            TARGET="linux-x86_64"
+            EXT="tar.gz"
+            ;;
+          macOS)
+            TARGET="macos-arm64"
+            EXT="tar.gz"
+            ;;
+          Windows)
+            TARGET="windows-x86_64"
+            EXT="zip"
+            ;;
+          *)
+            echo "::error::Unsupported RUNNER_OS: ${RUNNER_OS}"
+            exit 1
+            ;;
+        esac
+
+        BIN_DIR="${RUNNER_TEMP}/ounce-bin"
+        mkdir -p "${BIN_DIR}"
+
+        download_and_extract() {
+          local repo="$1"
+          local ver="$2"
+          local verify_sha="$3"
+          local asset="${repo}-${TARGET}.${EXT}"
+          local base_url
+          if [ "${ver}" = "latest" ]; then
+            base_url="https://github.com/hffgzktbcc-blip/${repo}/releases/latest/download"
+          else
+            base_url="https://github.com/hffgzktbcc-blip/${repo}/releases/download/${ver}"
+          fi
+
+          local tmp_dir
+          tmp_dir="$(mktemp -d)"
+          echo "Downloading ${base_url}/${asset}..."
+          curl -fsSL "${base_url}/${asset}" -o "${tmp_dir}/${asset}"
+
+          if [ "${verify_sha}" = "true" ]; then
+            curl -fsSL "${base_url}/${asset}.sha256" -o "${tmp_dir}/${asset}.sha256"
+            if command -v sha256sum >/dev/null 2>&1; then
+              (cd "${tmp_dir}" && sha256sum -c "${asset}.sha256")
+            elif command -v shasum >/dev/null 2>&1; then
+              (cd "${tmp_dir}" && shasum -a 256 -c "${asset}.sha256")
+            fi
+          fi
+
+          if [ "${EXT}" = "tar.gz" ]; then
+            tar -xzf "${tmp_dir}/${asset}" -C "${BIN_DIR}"
+          else
+            unzip -qo "${tmp_dir}/${asset}" -d "${BIN_DIR}"
+          fi
+          rm -rf "${tmp_dir}"
+        }
+
+        download_and_extract "ounce-hb" "${HB_VER}" "true"
+        download_and_extract "ounce-core" "${CORE_VER}" "true"
+
+        if [ "${INSTALL_RUNTIME}" = "true" ]; then
+          echo "Installing optional ounce-runtime (GPL-3.0-or-later)..."
+          download_and_extract "ounce-runtime" "${RUNTIME_VER}" "false"
+        fi
+
+        chmod +x "${BIN_DIR}"/* 2>/dev/null || true
+        echo "${BIN_DIR}" >> "${GITHUB_PATH}"
+        echo "bin-dir=${BIN_DIR}" >> "${GITHUB_OUTPUT}"
+
+        "${BIN_DIR}/ounce-hb" doctor --json

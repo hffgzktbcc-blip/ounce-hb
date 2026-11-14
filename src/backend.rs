@@ -118,6 +118,8 @@ pub struct RunOutput {
     pub stdout_dropped: u64,
     /// Bytes of stderr that were dropped. `0` means the whole stream is in `stderr`.
     pub stderr_dropped: u64,
+    /// Structured `ounce.run.v1` JSON report emitted via `--report-json`, when supported by engine.
+    pub report_json: Option<String>,
 }
 
 impl RunOutput {
@@ -152,11 +154,15 @@ impl Backend for Subprocess {
         if let Some(bad) = args.iter().find(|a| a.starts_with('-')) {
             return Err(RunError::UnsupportedArg(bad.clone()));
         }
+        let report_path = program.dir().join("report.json");
         let mut cmd = Command::new(&self.bin);
         cmd.arg("run-nro")
             .arg(program.path())
             .arg(HEADLESS)
             .args(args)
+            .env("OUNCE_REPORT_JSON", &report_path)
+            .env("OUNCE_AUDIO", "null")
+            .env("OUNCE_DETERMINISTIC", "1")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -207,12 +213,15 @@ impl Backend for Subprocess {
         let (stdout, stderr) = pipes.snapshot();
 
         let status = status?;
+        let report_json = fs::read_to_string(&report_path).ok();
+        let _ = fs::remove_file(&report_path);
         Ok(RunOutput {
             exit_code: status.code(),
             stdout: stdout.text,
             stderr: stderr.text,
             stdout_dropped: stdout.dropped,
             stderr_dropped: stderr.dropped,
+            report_json,
         })
     }
 }

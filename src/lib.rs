@@ -11,6 +11,7 @@ use std::time::Duration;
 
 pub mod backend;
 pub mod diagnose;
+pub mod report_v1;
 
 pub use backend::{
     BACKEND_ENV, Backend, CORE_BIN_ENV, DEFAULT_TIMEOUT, Engine, HEAD_BYTES, MAX_CAPTURED_BYTES,

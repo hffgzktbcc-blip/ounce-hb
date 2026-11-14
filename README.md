@@ -82,8 +82,10 @@ variable defaults to `core`. Options must precede the guest `--` separator.
 
 - `core`: use `OUNCE_CORE_BIN` when set and nonempty, otherwise find executable `ounce-core` on `PATH`.
 - `runtime`: use `OUNCE_RUNTIME_BIN` when set and nonempty, otherwise find executable `ounce-runtime` on `PATH`.
-- Any other value: execute that file directly, including relative paths and paths containing spaces.
-  A bare filename is relative to the current directory, rather than searched on `PATH`.
+- Any other value (including an unknown backend name): treat it as a file path and execute that
+  file directly, including relative paths and paths containing spaces. A bare filename is relative
+  to the current directory, rather than searched on `PATH`, and a missing or non-file path fails
+  with exit code 3.
 
 A configured binary override that is missing fails with exit code 3; it does not fall back to
 `PATH`. Empty `PATH` entries are skipped. Every backend must support
@@ -92,7 +94,16 @@ protocol in [docs/DIAGNOSIS.md](docs/DIAGNOSIS.md). All selections share timeout
 bounded output capture, input validation, guest-argument restrictions, and exit classification.
 Selecting runtime does not enable graphical presentation. Engine versions with different CLI
 or stop-line formats are not automatically detected or retried; unrecognised stops return 1.
-Dispatch tests use shell stand-ins and do not establish real-engine compatibility.
+
+Self-contained dispatch and cross-backend parity tests (`tests/backend_selection.rs` and
+`tests/runtime_backend_e2e.rs`) use clean-room stand-in runner executables and do not assume an
+external `ounce-runtime` checkout in CI. Observed against `ounce-runtime` (`OUNCE-NX2 v0.4.0`):
+that binary implements `run <file>` rather than `run-nro` (invoking `run-nro` prints usage and
+exits `0`, so direct unshimmed `--backend runtime` exits `1` as unrecognised) and exits `0` on
+VM/loader faults even when printing stop lines. Setting `OUNCE_REAL_CORE_BIN` and
+`OUNCE_REAL_RUNTIME_BIN` enables the opt-in clean-exit parity test in
+`tests/runtime_backend_e2e.rs`, which invokes `ounce-core` directly and wraps `ounce-runtime` in
+a test shim translating `run-nro` to `run` on `libnx_hello.nro` and synthetic clean NROs.
 
 ### Subprocess Runner Behavior
 - **Timeout**: Each execution is subject to a 60-second wall-clock limit. If exceeded, the child process is killed and exit code 4 is returned. Set `OUNCE_HB_TIMEOUT_SECS` to a number of seconds greater than 0 and at most 86400 to change the limit; any other value is refused with exit code 2.

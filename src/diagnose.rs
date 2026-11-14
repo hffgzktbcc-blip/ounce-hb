@@ -226,10 +226,10 @@ pub fn from_error(e: &RunError) -> StopReason {
 /// Classifies one finished ounce-core run from its exit status and output. See the module notes
 /// for why the last stop line is used and why stderr is read first.
 pub fn from_output(out: &RunOutput) -> StopReason {
-    if let Some(report_json) = out.report_json.as_deref() {
-        if let Some(report) = crate::report_v1::ReportV1::parse(report_json) {
-            return report.to_stop_reason(&out.stdout, &out.stderr);
-        }
+    if let Some(report_json) = out.report_json.as_deref()
+        && let Some(report) = crate::report_v1::ReportV1::parse(report_json)
+    {
+        return report.to_stop_reason(&out.stdout, &out.stderr);
     }
     let stderr: Vec<&str> = out.stderr.lines().map(str::trim).collect();
     let stdout: Vec<&str> = out.stdout.lines().map(str::trim).collect();

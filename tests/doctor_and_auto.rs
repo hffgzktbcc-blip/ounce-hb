@@ -43,8 +43,14 @@ impl Drop for TempWorkspace {
 #[test]
 fn doctor_reports_discovered_engines_in_json() {
     let ws = TempWorkspace::new("doctor");
-    let core = ws.write_script("fake-core", "if [ \"$1\" = \"--version\" ]; then echo 'ounce-core 0.8.2'; exit 0; fi");
-    let rt = ws.write_script("fake-rt", "if [ \"$1\" = \"--version\" ]; then echo 'ounce-runtime 0.5.0'; exit 0; fi");
+    let core = ws.write_script(
+        "fake-core",
+        "if [ \"$1\" = \"--version\" ]; then echo 'ounce-core 0.8.2'; exit 0; fi",
+    );
+    let rt = ws.write_script(
+        "fake-rt",
+        "if [ \"$1\" = \"--version\" ]; then echo 'ounce-runtime 0.5.0'; exit 0; fi",
+    );
 
     let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
         .args(["doctor", "--json"])
@@ -55,9 +61,18 @@ fn doctor_reports_discovered_engines_in_json() {
 
     assert_eq!(out.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("\"schema\": \"ounce.doctor.v1\""), "{stdout}");
-    assert!(stdout.contains("\"version\": \"ounce-core 0.8.2\""), "{stdout}");
-    assert!(stdout.contains("\"version\": \"ounce-runtime 0.5.0\""), "{stdout}");
+    assert!(
+        stdout.contains("\"schema\": \"ounce.doctor.v1\""),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("\"version\": \"ounce-core 0.8.2\""),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("\"version\": \"ounce-runtime 0.5.0\""),
+        "{stdout}"
+    );
 }
 
 #[cfg(unix)]
@@ -90,7 +105,10 @@ exit 0"#,
 
     assert_eq!(out.status.code(), Some(0));
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("attribution = Runtime Divergence"), "{stderr}");
+    assert!(
+        stderr.contains("attribution = Runtime Divergence"),
+        "{stderr}"
+    );
     let repro = fs::read_to_string(ws.0.join("ounce-repro.json")).expect("repro.json written");
     assert!(repro.contains("\"schema\": \"ounce.repro.v1\""), "{repro}");
     assert!(repro.contains("\"stop_kind\": \"cpu_error\""), "{repro}");
@@ -102,8 +120,14 @@ exit 0"#,
 fn auto_attributes_guest_bug_when_both_fail_identically() {
     let ws = TempWorkspace::new("auto-guest-bug");
     let report = r#"{"schema":"ounce.run.v1","engine":"engine","engine_version":"1.0","tier":"interpreter","silent_fallback":false,"stop_kind":"svc_break","exit_code":13,"pc":2147483660,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":305419896,"insns_executed":40,"message":null}"#;
-    let rt = ws.write_script("rt", &format!("cat > \"$OUNCE_REPORT_JSON\" <<'EOF'\n{report}\nEOF\nexit 1"));
-    let core = ws.write_script("core", &format!("cat > \"$OUNCE_REPORT_JSON\" <<'EOF'\n{report}\nEOF\nexit 1"));
+    let rt = ws.write_script(
+        "rt",
+        &format!("cat > \"$OUNCE_REPORT_JSON\" <<'EOF'\n{report}\nEOF\nexit 1"),
+    );
+    let core = ws.write_script(
+        "core",
+        &format!("cat > \"$OUNCE_REPORT_JSON\" <<'EOF'\n{report}\nEOF\nexit 1"),
+    );
 
     let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
         .current_dir(&ws.0)

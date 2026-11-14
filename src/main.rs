@@ -10,7 +10,9 @@ usage:
   ounce-hb doctor [--json]";
 
 enum Action<'a> {
-    Doctor { json: bool },
+    Doctor {
+        json: bool,
+    },
     Run {
         path: &'a str,
         guest: &'a [String],
@@ -153,7 +155,11 @@ fn run_doctor(json: bool) -> ExitCode {
         say_out(&format!(
             "ounce-hb doctor (v{})\n  host              : {os}/{arch}\n  aarch64 hw replay : {}\n  ounce-core        : {}\n  ounce-runtime     : {}\n",
             env!("CARGO_PKG_VERSION"),
-            if hw_replay { "available" } else { "unavailable (non-aarch64 host)" },
+            if hw_replay {
+                "available"
+            } else {
+                "unavailable (non-aarch64 host)"
+            },
             match (&core_path, &core_ver) {
                 (Some(p), Some(v)) => format!("{} ({v})", p.display()),
                 (Some(p), None) => p.display().to_string(),
@@ -303,7 +309,9 @@ fn run_auto(path: &str, kind: ounce_hb::Kind, bytes: &[u8], guest: &[String]) ->
     if std::fs::write("ounce-repro.json", &bundle).is_ok() {
         say_err("ounce-hb: wrote repro bundle to ounce-repro.json\n");
     }
-    say_err(&format!("ounce-hb: next: run `ounce-core diverge {path}` on an AArch64 host to pinpoint the diverging instruction.\n"));
+    say_err(&format!(
+        "ounce-hb: next: run `ounce-core diverge {path}` on an AArch64 host to pinpoint the diverging instruction.\n"
+    ));
     ExitCode::from(core_reason.exit_code())
 }
 

@@ -1414,9 +1414,18 @@ fn opt_in_real_core_and_runtime_libnx_hello_parity() {
             &[MOV_W0_0, SVC_EXIT_PROCESS],
         ),
     );
-    let runtime_shim = real_runtime
-        .as_deref()
-        .map(|bin| write_real_runtime_shim(&h.root, bin));
+    let runtime_shim = real_runtime.as_deref().map(|bin| {
+        // When real_runtime directly supports `run-nro`, invoke it directly (zero-shim).
+        // Fall back to write_real_runtime_shim for older binaries that only support `run`.
+        let test_run = Command::new(bin).arg("--help").output();
+        if let Ok(out) = test_run {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            if stdout.contains("run-nro") {
+                return bin.to_path_buf();
+            }
+        }
+        write_real_runtime_shim(&h.root, bin)
+    });
 
     let fixtures: [(&str, &Path, &[&str], &[&str]); 4] = [
         (
@@ -1512,6 +1521,93 @@ fn opt_in_real_core_and_runtime_libnx_hello_parity() {
         eprintln!(
             "SKIPPED runtime comparison in opt_in_real_core_and_runtime_libnx_hello_parity: {REAL_RUNTIME_ENV} not set"
         );
+    }
+}
+
+#[test]
+fn opt_in_real_core_and_runtime_fault_parity() {
+    let real_core = opt_in_bin(REAL_CORE_ENV, Some(CORE_BIN_ENV));
+    let real_runtime = opt_in_bin(REAL_RUNTIME_ENV, None);
+
+    if real_core.is_none() && real_runtime.is_none() {
+        eprintln!(
+            "SKIPPED opt_in_real_core_and_runtime_fault_parity: set {REAL_CORE_ENV} and {REAL_RUNTIME_ENV} to run real-binary fault parity"
+        );
+        return;
+    }
+
+    let h = Harness::new("real-fault-parity");
+    let brk_nro = h.write_file(
+        "fault_brk.nro",
+        &synthetic_nro(&[BRK_0, SVC_EXIT_PROCESS], None),
+    );
+    let undef_nro = h.write_file(
+        "fault_undef.nro",
+        &synthetic_nro(&[0x0000_0000, SVC_EXIT_PROCESS], None),
+    );
+    let ldr_nro = h.write_file(
+        "fault_unmapped_read.nro",
+        &synthetic_nro(&[LDR_X0_X1, SVC_EXIT_PROCESS], None),
+    );
+    let svc_nro = h.write_file(
+        "fault_unhandled_svc.nro",
+        &synthetic_nro(&[SVC_UNHANDLED, SVC_EXIT_PROCESS], None),
+    );
+
+    let runtime_bin_or_shim = real_runtime.as_deref().map(|bin| {
+        let test_run = Command::new(bin).arg("--help").output();
+        if let Ok(out) = test_run {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            if stdout.contains("run-nro") {
+                return bin.to_path_buf();
+            }
+        }
+        write_real_runtime_shim(&h.root, bin)
+    });
+
+    let fault_cases: [(&str, &Path); 4] = [
+        ("brk_0", &brk_nro),
+        ("undefined_instruction", &undef_nro),
+        ("unmapped_read", &ldr_nro),
+        ("unhandled_svc", &svc_nro),
+    ];
+
+    for (case, nro_path) in fault_cases {
+        let run_fault = |backend: &str, env_var: &str, bin: &Path| -> Output {
+            let mut cmd = h.hb();
+            cmd.env(env_var, bin)
+                .env(ounce_hb::TIMEOUT_ENV, "30")
+                .args(["run", "--backend", backend])
+                .arg(nro_path);
+            let out = cmd.output().unwrap();
+            let stderr = text(&out.stderr);
+            assert_ne!(
+                out.status.code(),
+                Some(0),
+                "{case} ({backend}) unexpectedly succeeded:\nSTDERR:\n{stderr}"
+            );
+            assert!(
+                stderr.contains("ounce-hb:"),
+                "{case} ({backend}) missing diagnosis banner:\n{stderr}"
+            );
+            out
+        };
+
+        let core_out = real_core
+            .as_deref()
+            .map(|bin| run_fault("core", CORE_BIN_ENV, bin));
+        let rt_out = runtime_bin_or_shim
+            .as_deref()
+            .map(|shim| run_fault("runtime", RUNTIME_BIN_ENV, shim));
+
+        if let (Some(c), Some(r)) = (core_out, rt_out) {
+            assert!(
+                !c.status.success() && !r.status.success(),
+                "{case} expected non-zero fault exit for both core ({:?}) and runtime ({:?})",
+                c.status.code(),
+                r.status.code()
+            );
+        }
     }
 }
 

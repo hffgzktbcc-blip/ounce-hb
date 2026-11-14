@@ -1,0 +1,407 @@
+{
+  "metadata": {
+    "timestamp": "2026-11-14T16:35:22.601266+00:00",
+    "host_os": "Darwin",
+    "host_machine": "arm64",
+    "python_version": "3.9.6",
+    "core_bin": "<HOME>/orca/ounce-core/target/release/ounce-core",
+    "runtime_bin": "<HOME>/orca/ounce-runtime/target/release/ounce-runtime",
+    "hb_bin": "<HOME>/orca/workspaces/ounce-hb/hb-tri-engine-tournament/target/release/ounce-hb"
+  },
+  "event_1_homebrew": [
+    {
+      "name": "libnx_hello",
+      "expected": "Hello from ounce-hb!",
+      "runs": {
+        "direct_core": {
+          "exit_code": 0,
+          "elapsed_ms": 719.44,
+          "metrics": {
+            "instructions": 16453397,
+            "mips": 25.31,
+            "elapsed_ms": 650.04,
+            "blocks_compiled": 1974,
+            "jit_hits": 16451423
+          },
+          "matched": true
+        },
+        "direct_runtime": {
+          "exit_code": 0,
+          "elapsed_ms": 306.97,
+          "metrics": {
+            "instructions": 16461227,
+            "mips": 56.44,
+            "elapsed_ms": 291.669,
+            "blocks_compiled": 2011,
+            "jit_hits": 8950803
+          },
+          "matched": true
+        },
+        "hb_core": {
+          "exit_code": 0,
+          "elapsed_ms": 778.64,
+          "metrics": {
+            "instructions": 16453261,
+            "mips": 25.16,
+            "elapsed_ms": 653.909,
+            "blocks_compiled": 1974,
+            "jit_hits": 16451287
+          },
+          "matched": true
+        },
+        "hb_runtime": {
+          "exit_code": 0,
+          "elapsed_ms": 398.86,
+          "metrics": {
+            "instructions": 16460486,
+            "mips": 47.34,
+            "elapsed_ms": 347.743,
+            "blocks_compiled": 2010,
+            "jit_hits": 8950443
+          },
+          "matched": true
+        }
+      }
+    },
+    {
+      "name": "clean_exit",
+      "expected": "Process exited gracefully",
+      "runs": {
+        "direct_core": {
+          "exit_code": 0,
+          "elapsed_ms": 50.6,
+          "metrics": {
+            "instructions": 2,
+            "mips": 0.01,
+            "elapsed_ms": 0.17,
+            "blocks_compiled": 1,
+            "jit_hits": 1
+          },
+          "matched": true
+        },
+        "direct_runtime": {
+          "exit_code": 0,
+          "elapsed_ms": 11.06,
+          "metrics": {
+            "instructions": 2,
+            "mips": 0.09,
+            "elapsed_ms": 0.022,
+            "blocks_compiled": 1,
+            "jit_hits": 1
+          },
+          "matched": true
+        },
+        "hb_core": {
+          "exit_code": 0,
+          "elapsed_ms": 79.14,
+          "metrics": {
+            "instructions": 2,
+            "mips": 0.01,
+            "elapsed_ms": 0.171,
+            "blocks_compiled": 1,
+            "jit_hits": 1
+          },
+          "matched": true
+        },
+        "hb_runtime": {
+          "exit_code": 0,
+          "elapsed_ms": 53.61,
+          "metrics": {
+            "instructions": 2,
+            "mips": 0.08,
+            "elapsed_ms": 0.024,
+            "blocks_compiled": 1,
+            "jit_hits": 1
+          },
+          "matched": true
+        }
+      }
+    },
+    {
+      "name": "fault_brk",
+      "expected": "BRK #0x0 breakpoint hit",
+      "runs": {
+        "direct_core": {
+          "exit_code": 1,
+          "elapsed_ms": 142.43,
+          "metrics": {
+            "instructions": 0,
+            "mips": 0.0,
+            "elapsed_ms": 0.171,
+            "blocks_compiled": 1,
+            "jit_hits": 0
+          },
+          "matched": true
+        },
+        "direct_runtime": {
+          "exit_code": 1,
+          "elapsed_ms": 12.54,
+          "metrics": {
+            "instructions": 0,
+            "mips": 0.0,
+            "elapsed_ms": 0.021,
+            "blocks_compiled": 1,
+            "jit_hits": 0
+          },
+          "matched": false
+        },
+        "hb_core": {
+          "exit_code": 12,
+          "elapsed_ms": 97.87,
+          "metrics": {
+            "instructions": 0,
+            "mips": 0.0,
+            "elapsed_ms": 0.384,
+            "blocks_compiled": 1,
+            "jit_hits": 0
+          },
+          "matched": true
+        },
+        "hb_runtime": {
+          "exit_code": 12,
+          "elapsed_ms": 47.71,
+          "metrics": {
+            "instructions": 0,
+            "mips": 0.0,
+            "elapsed_ms": 0.034,
+            "blocks_compiled": 1,
+            "jit_hits": 0
+          },
+          "matched": true
+        }
+      }
+    },
+    {
+      "name": "fault_undef",
+      "expected": "CPU fault",
+      "runs": {
+        "direct_core": {
+          "exit_code": 1,
+          "elapsed_ms": 53.35,
+          "metrics": {
+            "instructions": 0,
+            "mips": 0.0,
+            "elapsed_ms": 0.176,
+            "blocks_compiled": 1,
+            "jit_hits": 0
+          },
+          "matched": false
+        },
+        "direct_runtime": {
+          "exit_code": 1,
+          "elapsed_ms": 11.54,
+          "metrics": {
+            "instructions": 0,
+            "mips": 0.0,
+            "elapsed_ms": 0.025,
+            "blocks_compiled": 1,
+            "jit_hits": 0
+          },
+          "matched": true
+        },
+        "hb_core": {
+          "exit_code": 10,
+          "elapsed_ms": 94.24,
+          "metrics": {
+            "instructions": 0,
+            "mips": 0.0,
+            "elapsed_ms": 0.18,
+            "blocks_compiled": 1,
+            "jit_hits": 0
+          },
+          "matched": true
+        },
+        "hb_runtime": {
+          "exit_code": 12,
+          "elapsed_ms": 54.22,
+          "metrics": {
+            "instructions": 0,
+            "mips": 0.0,
+            "elapsed_ms": 0.034,
+            "blocks_compiled": 1,
+            "jit_hits": 0
+          },
+          "matched": true
+        }
+      }
+    },
+    {
+      "name": "fault_unmapped",
+      "expected": "CPU fault",
+      "runs": {
+        "direct_core": {
+          "exit_code": 1,
+          "elapsed_ms": 50.46,
+          "metrics": {
+            "instructions": 0,
+            "mips": 0.0,
+            "elapsed_ms": 0.242,
+            "blocks_compiled": 1,
+            "jit_hits": 0
+          },
+          "matched": false
+        },
+        "direct_runtime": {
+          "exit_code": 1,
+          "elapsed_ms": 11.07,
+          "metrics": {
+            "instructions": 0,
+            "mips": 0.0,
+            "elapsed_ms": 0.026,
+            "blocks_compiled": 1,
+            "jit_hits": 0
+          },
+          "matched": true
+        },
+        "hb_core": {
+          "exit_code": 11,
+          "elapsed_ms": 99.19,
+          "metrics": {
+            "instructions": 0,
+            "mips": 0.0,
+            "elapsed_ms": 0.176,
+            "blocks_compiled": 1,
+            "jit_hits": 0
+          },
+          "matched": true
+        },
+        "hb_runtime": {
+          "exit_code": 12,
+          "elapsed_ms": 61.57,
+          "metrics": {
+            "instructions": 0,
+            "mips": 0.0,
+            "elapsed_ms": 0.026,
+            "blocks_compiled": 1,
+            "jit_hits": 0
+          },
+          "matched": true
+        }
+      }
+    }
+  ],
+  "event_2_stage20": [
+    {
+      "impl": "ounce-core",
+      "cpu_tier": "tier3",
+      "exit_code": 0,
+      "elapsed_ms": 1306.91,
+      "stage20_insns": 15304,
+      "stage20_mips": 42.41,
+      "superblocks_fused": 5094,
+      "native_blocks": null,
+      "native_runs": null,
+      "stage20_pass": true
+    },
+    {
+      "impl": "ounce-core",
+      "cpu_tier": "tier4",
+      "exit_code": 0,
+      "elapsed_ms": 1348.0,
+      "stage20_insns": 15304,
+      "stage20_mips": 4.77,
+      "superblocks_fused": null,
+      "native_blocks": 4,
+      "native_runs": 5037,
+      "stage20_pass": true
+    },
+    {
+      "impl": "ounce-runtime",
+      "cpu_tier": "interp",
+      "exit_code": 0,
+      "elapsed_ms": 31.8,
+      "stage20_insns": 15304,
+      "stage20_mips": 0.0,
+      "superblocks_fused": null,
+      "native_blocks": null,
+      "native_runs": null,
+      "stage20_pass": true
+    },
+    {
+      "impl": "ounce-runtime",
+      "cpu_tier": "tier3",
+      "exit_code": 0,
+      "elapsed_ms": 17.75,
+      "stage20_insns": 15304,
+      "stage20_mips": 82.67,
+      "superblocks_fused": 5094,
+      "native_blocks": null,
+      "native_runs": null,
+      "stage20_pass": true
+    },
+    {
+      "impl": "ounce-runtime",
+      "cpu_tier": "tier4",
+      "exit_code": 0,
+      "elapsed_ms": 21.49,
+      "stage20_insns": 15304,
+      "stage20_mips": 15.18,
+      "superblocks_fused": null,
+      "native_blocks": 4,
+      "native_runs": 5037,
+      "stage20_pass": true
+    },
+    {
+      "impl": "ounce-runtime",
+      "cpu_tier": "nce",
+      "exit_code": 0,
+      "elapsed_ms": 15.98,
+      "stage20_insns": 15304,
+      "stage20_mips": 116.53,
+      "superblocks_fused": null,
+      "native_blocks": 5,
+      "native_runs": 5101,
+      "stage20_pass": true
+    }
+  ],
+  "event_3_conformance": [
+    {
+      "impl": "ounce-core",
+      "tier": "tier3",
+      "exit_code": 0,
+      "passed_cases": 12,
+      "total_cases": 12,
+      "score": "12/12"
+    },
+    {
+      "impl": "ounce-core",
+      "tier": "tier4",
+      "exit_code": 0,
+      "passed_cases": 12,
+      "total_cases": 12,
+      "score": "12/12"
+    },
+    {
+      "impl": "ounce-runtime",
+      "tier": "interp",
+      "exit_code": 0,
+      "passed_cases": 12,
+      "total_cases": 12,
+      "score": "12/12"
+    },
+    {
+      "impl": "ounce-runtime",
+      "tier": "tier3",
+      "exit_code": 0,
+      "passed_cases": 12,
+      "total_cases": 12,
+      "score": "12/12"
+    },
+    {
+      "impl": "ounce-runtime",
+      "tier": "tier4",
+      "exit_code": 0,
+      "passed_cases": 12,
+      "total_cases": 12,
+      "score": "12/12"
+    },
+    {
+      "impl": "ounce-runtime",
+      "tier": "nce",
+      "exit_code": 0,
+      "passed_cases": 12,
+      "total_cases": 12,
+      "score": "12/12"
+    }
+  ]
+}

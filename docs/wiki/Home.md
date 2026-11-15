@@ -11,7 +11,7 @@ verifiable correctness, diagnostic clarity, and complete legal transparency.
 
 ## Wiki Pages
 
-- **[Getting Started](Getting-started.md)**: Installation, building from source, CLI usage, and runner configuration.
+- **[Getting Started](Getting-started.md)**: Installation, building from source, CLI usage, and runner configuration. `doctor`, `repro`, and `--auto` are in [the quick start](../QUICKSTART.md).
 - **[FAQ](FAQ.md)**: Frequently asked questions regarding scope, legal boundaries, and relationship to ounce-core.
 - **[Clean-Room Policy](Clean-room-policy.md)**: Our development protocol, allowed sources, and strict isolation rules.
 - **[Architecture](Architecture.md)**: System design, format classification, subprocess runner model, and error handling.

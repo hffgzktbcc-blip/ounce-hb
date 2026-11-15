@@ -47,11 +47,14 @@ file, out-of-scope container, missing core).
 
 ## Command line
 
-`ounce-hb run <file.nro>` and `ounce-hb run <file.nro> -- <guest args...>` are the only accepted forms.
-A word between the program path and `--` (for example `ounce-hb run game.nro --timeout 5 -- a`) is
-refused with exit code `2` and a message that names the word. It used to be dropped without a word,
-which hid typos and options meant for ounce-hb. Guest arguments are everything after `--`, and each is
-checked as before (no leading `-`, the length limit).
+Accepted forms are `ounce-hb run [--backend <core|runtime|auto|path>] [--auto] <file.nro> [-- <guest args...>]`,
+`ounce-hb repro [--backend <core|runtime|path>] <bundle.json|dir>`, and `ounce-hb doctor [--json]`.
+`doctor`, `repro`, and `--auto` are on `main` after v0.0.2. They are not in the v0.0.2 release archive.
+A word between the program path and `--` that is not one of those flags (for example
+`ounce-hb run game.nro --timeout 5 -- a`) is refused with exit code `2` and a message that names the
+word. There is no `--timeout` or `--json` flag on `run`; the time limit is `OUNCE_HB_TIMEOUT_SECS`.
+Guest arguments are everything after `--`, and each is checked as before (no leading `-`, the length limit).
+See [QUICKSTART.md](QUICKSTART.md) for `doctor`, `repro`, `--auto`, and `setup-ounce`.
 
 ## What is matched
 

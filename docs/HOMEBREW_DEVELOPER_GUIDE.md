@@ -10,14 +10,14 @@
 Use the default `ounce-core` backend when you want deterministic execution, bounded instruction/time budgets, and safe-Rust (`#![forbid(unsafe_code)]`) fault reporting:
 
 ```sh
-ounce-hb run --backend core --timeout 10s path/to/your_homebrew.nro
+OUNCE_HB_TIMEOUT_SECS=10 ounce-hb run --backend core path/to/your_homebrew.nro
 ```
 
 ### High-Speed Runtime Verification (`--backend runtime`)
 If you have `ounce-runtime` installed, run the exact same `.nro` through the fast JIT / Apple Silicon NCE backend:
 
 ```sh
-ounce-hb run --backend runtime --timeout 10s path/to/your_homebrew.nro
+OUNCE_HB_TIMEOUT_SECS=10 ounce-hb run --backend runtime path/to/your_homebrew.nro
 ```
 
 Both backends enforce identical clean exit (`0`) vs. non-zero fault exit codes and print clear diagnostic banners on abnormal termination.
@@ -34,7 +34,7 @@ When a homebrew binary fails, `ounce-hb` preserves guest stdout/stderr and print
 | **CPU Breakpoint (`brk #0`)** | Cleanly refused with non-zero exit code and diagnostic banner. |
 | **Undefined Instruction** | Cleanly refused with non-zero exit code and faulting PC/opcode context. |
 | **Unmapped Memory Read/Write** | Cleanly refused with non-zero exit code and faulting address. |
-| **Infinite Loop / Hang** | Bounded by `--timeout` (default watchdog), terminated cleanly without hanging CI. |
+| **Infinite Loop / Hang** | Bounded by the 60-second watchdog, or `OUNCE_HB_TIMEOUT_SECS` (1 to 86400). There is no `--timeout` flag. |
 
 *(See [`docs/DIAGNOSIS.md`](DIAGNOSIS.md) for the complete exit-code table and protocol.)*
 
@@ -47,7 +47,7 @@ Add a clean-room validation step to your GitHub Actions workflow to verify that 
 ```yaml
 - name: Verify homebrew NRO
   run: |
-    ounce-hb run --backend core --timeout 15s build/app.nro
+    OUNCE_HB_TIMEOUT_SECS=15 ounce-hb run --backend core build/app.nro
 ```
 
 ---

@@ -15,8 +15,9 @@ Nintendo Switch homebrew executable.
 
 2. **ounce-core Binary**:
    ounce-hb delegates ARM64 emulation to `ounce-core`.
-   - Download the v0.8.0 release from [hffgzktbcc-blip/ounce-core](https://github.com/hffgzktbcc-blip/ounce-core/releases),
-     or build it from source.
+   - Download a current release from [hffgzktbcc-blip/ounce-core](https://github.com/hffgzktbcc-blip/ounce-core/releases)
+     (v0.8.2 as of 14 Nov 2026), or build `main` from source.
+     `--report-json` exists only on ounce-core `main` after that tag.
    - Place the binary on your system `PATH` or point to it via the `OUNCE_CORE_BIN` environment variable:
      ```sh
      export OUNCE_CORE_BIN=/path/to/ounce-core
@@ -39,6 +40,10 @@ The compiled binary will be located at `target/release/ounce-hb`.
 ---
 
 ## Running a Homebrew Application
+
+`doctor`, `repro`, and `run --auto` are described in [QUICKSTART.md](../QUICKSTART.md).
+They are on `main` and are not in the v0.0.2 release archive. There is no
+`--timeout` flag; set `OUNCE_HB_TIMEOUT_SECS`.
 
 To execute a homebrew `.nro` file:
 ```sh
@@ -68,7 +73,7 @@ what each category means is [DIAGNOSIS.md](../DIAGNOSIS.md); this table is the s
 | `0` | Guest program exited normally (svcExitProcess) |
 | `1` | ounce-core stopped in a way ounce-hb does not recognise (raw output is printed unchanged) |
 | `2` | Bad CLI invocation, file unreadable, out-of-scope input (e.g. NSP, XCI, NCA, NPDM, or unrecognized magic), a guest argument starting with `-`, guest arguments longer than 16 KiB together ([ounce-core #418](https://github.com/hffgzktbcc-blip/ounce-core/issues/418)), a malformed `OUNCE_HB_TIMEOUT_SECS`, or an unsupported NSO kind |
-| `3` | ounce-core binary missing or not found |
+| `3` | Selected backend binary missing or not found |
 | `4` | Execution timeout (ounce-core killed after 60 seconds, or `OUNCE_HB_TIMEOUT_SECS`) |
 | `5` | ounce-hb could not start, wait on, or stage for ounce-core (host I/O error) |
 | `10` | Unimplemented instruction in ounce-core |

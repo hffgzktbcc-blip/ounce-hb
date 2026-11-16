@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `ounce-hb run --timeout <secs>`: per-run wall-clock limit (overrides `OUNCE_HB_TIMEOUT_SECS`); exceeding it exits 4.
+- `ounce-hb run --json`: prints one `ounce.hb.run.v1` object on stdout (exit code, stop label, guest exit code, captured output). Not supported with `--auto` yet.
+- `ounce-hb doctor` (text and `--json`) now reports `DEVKITPRO`, `devkitA64` and `cargo-nx`. They are only needed to build homebrew, so they do not change doctor's exit code.
+
 ---
 
 ## [0.0.1] - 2026-11-13

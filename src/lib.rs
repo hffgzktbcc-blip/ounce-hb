@@ -186,12 +186,17 @@ pub fn timeout_from_env() -> Result<Duration, RunError> {
 
 /// Parses a timeout override in seconds. Surrounding spaces are allowed.
 pub fn parse_timeout(value: &str) -> Result<Duration, RunError> {
+    parse_timeout_named(value, TIMEOUT_ENV)
+}
+
+/// Like [`parse_timeout`], naming the setting (`--timeout`, an environment variable) in the error.
+pub fn parse_timeout_named(value: &str, name: &str) -> Result<Duration, RunError> {
     match value.trim().parse::<f64>() {
         Ok(secs) if secs.is_finite() && secs > 0.0 && secs <= MAX_TIMEOUT_SECS => {
             Ok(Duration::from_secs_f64(secs))
         }
         _ => Err(RunError::BadTimeout(format!(
-            "{TIMEOUT_ENV} must be a number of seconds greater than 0 and at most {MAX_TIMEOUT_SECS}, got {value:?}."
+            "{name} must be a number of seconds greater than 0 and at most {MAX_TIMEOUT_SECS}, got {value:?}."
         ))),
     }
 }
@@ -214,11 +219,26 @@ pub fn run_engine(
     bytes: &[u8],
     args: &[String],
 ) -> Result<RunOutput, RunError> {
+    run_engine_timeout(engine, kind, bytes, args, None)
+}
+
+/// [`run_engine`] with an explicit wall-clock limit. `None` falls back to [`TIMEOUT_ENV`], then
+/// [`DEFAULT_TIMEOUT`].
+pub fn run_engine_timeout(
+    engine: &Engine,
+    kind: Kind,
+    bytes: &[u8],
+    args: &[String],
+    limit: Option<Duration>,
+) -> Result<RunOutput, RunError> {
     if kind != Kind::Nro {
         return Err(RunError::UnsupportedKind(kind));
     }
     check_guest_args(args)?;
-    let timeout = timeout_from_env()?;
+    let timeout = match limit {
+        Some(l) => l,
+        None => timeout_from_env()?,
+    };
     let backend = Subprocess::new(engine.locate()?, timeout);
     run_with(&backend, kind, bytes, args)
 }

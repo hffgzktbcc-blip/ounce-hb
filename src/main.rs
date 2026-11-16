@@ -3,10 +3,11 @@
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::{Command, ExitCode};
+use std::time::Duration;
 
 const USAGE: &str = "\
 usage:
-  ounce-hb run [--backend <core|runtime|auto|path>] [--auto] <file.nro> [-- guest args...]
+  ounce-hb run [--backend <core|runtime|auto|path>] [--auto] [--timeout <secs>] [--json] <file.nro> [-- guest args...]
   ounce-hb repro [--backend <core|runtime|path>] <bundle.json|dir>
   ounce-hb doctor [--json]";
 
@@ -23,7 +24,17 @@ enum Action<'a> {
         guest: &'a [String],
         backend: Option<&'a str>,
         auto: bool,
+        opts: RunOpts,
     },
+}
+
+/// Options of `ounce-hb run` that do not select the engine.
+#[derive(Clone, Copy, Default)]
+struct RunOpts {
+    /// `--timeout <secs>`; `None` defers to `OUNCE_HB_TIMEOUT_SECS`, then the default.
+    timeout: Option<Duration>,
+    /// `--json`: print one `ounce.hb.run.v1` object on stdout instead of the guest's output.
+    json: bool,
 }
 
 fn main() -> ExitCode {
@@ -36,7 +47,8 @@ fn main() -> ExitCode {
             guest,
             backend,
             auto,
-        }) => run(path, guest, backend, auto),
+            opts,
+        }) => run(path, guest, backend, auto, opts),
         Err(message) => {
             say_err(&format!("{message}\n"));
             ExitCode::from(2)
@@ -97,6 +109,7 @@ fn parse(args: &[String]) -> Result<Action<'_>, String> {
     let mut path = None;
     let mut backend = None;
     let mut auto = false;
+    let mut opts = RunOpts::default();
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -107,10 +120,23 @@ fn parse(args: &[String]) -> Result<Action<'_>, String> {
                         guest: &args[i + 1..],
                         backend,
                         auto,
+                        opts,
                     })
                     .ok_or_else(|| USAGE.to_string());
             }
             "--auto" => auto = true,
+            "--json" => opts.json = true,
+            "--timeout" => {
+                if opts.timeout.is_some() {
+                    return Err(format!("ounce-hb: duplicate --timeout.\n{USAGE}"));
+                }
+                i += 1;
+                let value = args.get(i).map(String::as_str).unwrap_or("");
+                opts.timeout = Some(
+                    ounce_hb::parse_timeout_named(value, "--timeout")
+                        .map_err(|e| format!("ounce-hb: {e}\n{USAGE}"))?,
+                );
+            }
             "--backend" => {
                 if backend.is_some() {
                     return Err(format!("ounce-hb: duplicate --backend.\n{USAGE}"));
@@ -140,6 +166,7 @@ fn parse(args: &[String]) -> Result<Action<'_>, String> {
         guest: &args[args.len()..],
         backend,
         auto,
+        opts,
     })
     .ok_or_else(|| USAGE.to_string())
 }
@@ -151,7 +178,59 @@ fn probe_version(bin: &Path) -> Option<String> {
     Some(line.to_string())
 }
 
+/// One homebrew-toolchain check shown by `doctor`. These are needed to *build* homebrew, not to run it.
+struct ToolCheck {
+    name: &'static str,
+    ok: bool,
+    detail: String,
+    fix: &'static str,
+}
+
+fn toolchain_checks() -> Vec<ToolCheck> {
+    let devkitpro = std::env::var_os("DEVKITPRO").filter(|v| !v.is_empty());
+    let root = devkitpro.as_ref().map(std::path::PathBuf::from);
+    let root_ok = root.as_deref().is_some_and(Path::is_dir);
+    let gcc = root
+        .as_ref()
+        .map(|r| r.join("devkitA64/bin/aarch64-none-elf-gcc"))
+        .filter(|p| p.is_file());
+    let nx = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+        .map(|d| d.join("cargo-nx"))
+        .find(|p| p.is_file());
+    vec![
+        ToolCheck {
+            name: "DEVKITPRO",
+            ok: root_ok,
+            detail: match (&root, root_ok) {
+                (Some(r), true) => r.display().to_string(),
+                (Some(r), false) => format!("set to {} but that is not a directory", r.display()),
+                (None, _) => "not set".to_string(),
+            },
+            fix: "install devkitPro and export DEVKITPRO=/opt/devkitpro",
+        },
+        ToolCheck {
+            name: "devkitA64",
+            ok: gcc.is_some(),
+            detail: gcc.map_or_else(
+                || "aarch64-none-elf-gcc not found under $DEVKITPRO/devkitA64/bin".to_string(),
+                |p| p.display().to_string(),
+            ),
+            fix: "dkp-pacman -S switch-dev",
+        },
+        ToolCheck {
+            name: "cargo-nx",
+            ok: nx.is_some(),
+            detail: nx.map_or_else(
+                || "not found on PATH".to_string(),
+                |p| p.display().to_string(),
+            ),
+            fix: "cargo install cargo-nx",
+        },
+    ]
+}
+
 fn run_doctor(json: bool) -> ExitCode {
+    let tools = toolchain_checks();
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
     let hw_replay = arch == "aarch64" && matches!(os, "macos" | "linux");
@@ -185,9 +264,19 @@ fn run_doctor(json: bool) -> ExitCode {
             .map(|v| format!("\"{}\"", esc(v)))
             .unwrap_or_else(|| "null".to_string());
         say_out(&format!(
-            "{{\n  \"schema\": \"ounce.doctor.v1\",\n  \"os\": \"{os}\",\n  \"arch\": \"{arch}\",\n  \"aarch64_hw_replay\": {hw_replay},\n  \"ounce_core\": {{\"found\": {}, \"path\": {core_p}, \"version\": {core_v}}},\n  \"ounce_runtime\": {{\"found\": {}, \"path\": {rt_p}, \"version\": {rt_v}}}\n}}\n",
+            "{{\n  \"schema\": \"ounce.doctor.v1\",\n  \"os\": \"{os}\",\n  \"arch\": \"{arch}\",\n  \"aarch64_hw_replay\": {hw_replay},\n  \"ounce_core\": {{\"found\": {}, \"path\": {core_p}, \"version\": {core_v}}},\n  \"ounce_runtime\": {{\"found\": {}, \"path\": {rt_p}, \"version\": {rt_v}}},\n  \"toolchain\": {{{}}}\n}}\n",
             core_path.is_some(),
-            rt_path.is_some()
+            rt_path.is_some(),
+            tools
+                .iter()
+                .map(|t| format!(
+                    "\"{}\": {{\"ok\": {}, \"detail\": \"{}\"}}",
+                    t.name,
+                    t.ok,
+                    esc(&t.detail)
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     } else {
         say_out(&format!(
@@ -209,6 +298,17 @@ fn run_doctor(json: bool) -> ExitCode {
                 (None, _) => "not found (optional; set OUNCE_RUNTIME_BIN)".to_string(),
             }
         ));
+        say_out("  homebrew toolchain (only needed to build homebrew):\n");
+        for t in &tools {
+            if t.ok {
+                say_out(&format!("    {:<10} ok: {}\n", t.name, t.detail));
+            } else {
+                say_out(&format!(
+                    "    {:<10} MISSING: {} (fix: {})\n",
+                    t.name, t.detail, t.fix
+                ));
+            }
+        }
     }
 
     if core_path.is_some() || rt_path.is_some() {
@@ -368,11 +468,45 @@ fn run_repro(path: &str, backend: Option<&str>) -> ExitCode {
     }
 }
 
-fn run(path: &str, guest: &[String], backend: Option<&str>, auto: bool) -> ExitCode {
+/// Prints the `--json` result of `ounce-hb run` (and nothing else) on stdout.
+fn emit_run_json(
+    path: &str,
+    code: u8,
+    stop: &str,
+    out: Option<&ounce_hb::RunOutput>,
+    opts: RunOpts,
+) {
+    let esc = ounce_hb::report_v1::escape_json;
+    let guest_code = out
+        .and_then(|o| o.exit_code)
+        .map_or_else(|| "null".to_string(), |c| c.to_string());
+    let timeout = opts
+        .timeout
+        .map_or_else(|| "null".to_string(), |d| d.as_secs_f64().to_string());
+    say_out(&format!(
+        "{{\"schema\": \"ounce.hb.run.v1\", \"path\": \"{}\", \"exit_code\": {code}, \"stop\": \"{stop}\", \"guest_exit_code\": {guest_code}, \"timeout_secs\": {timeout}, \"stdout\": \"{}\", \"stderr\": \"{}\", \"truncated\": {}}}\n",
+        esc(path),
+        esc(out.map_or("", |o| o.stdout.as_str())),
+        esc(out.map_or("", |o| o.stderr.as_str())),
+        out.is_some_and(ounce_hb::RunOutput::truncated),
+    ));
+}
+
+fn run(path: &str, guest: &[String], backend: Option<&str>, auto: bool, opts: RunOpts) -> ExitCode {
+    let wants_auto = auto || backend == Some("auto");
+    if opts.json && wants_auto {
+        say_err(
+            "ounce-hb: --json is not supported with --auto yet (auto escalation prints several runs).\n",
+        );
+        return ExitCode::from(2);
+    }
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
             say_err(&format!("ounce-hb: cannot read {path}: {e}\n"));
+            if opts.json {
+                emit_run_json(path, 2, "refused", None, opts);
+            }
             return ExitCode::from(2);
         }
     };
@@ -380,12 +514,15 @@ fn run(path: &str, guest: &[String], backend: Option<&str>, auto: bool) -> ExitC
         Ok(k) => k,
         Err(r) => {
             say_err(&format!("ounce-hb: rejected {path}: {r}\n"));
+            if opts.json {
+                emit_run_json(path, 2, "refused", None, opts);
+            }
             return ExitCode::from(2);
         }
     };
 
-    if auto || backend == Some("auto") {
-        return run_auto(path, kind, &bytes, guest);
+    if wants_auto {
+        return run_auto(path, kind, &bytes, guest, opts);
     }
 
     let mut note = None;
@@ -396,12 +533,17 @@ fn run(path: &str, guest: &[String], backend: Option<&str>, auto: bool) -> ExitC
         .as_deref()
         .map(ounce_hb::Engine::from_selection)
         .unwrap_or(ounce_hb::Engine::Core);
-    let reason = match ounce_hb::run_engine(&engine, kind, &bytes, guest) {
+    let mut captured = None;
+    let reason = match ounce_hb::run_engine_timeout(&engine, kind, &bytes, guest, opts.timeout) {
         Ok(out) => {
-            say_out(&out.stdout);
-            say_err(&out.stderr);
+            if !opts.json {
+                say_out(&out.stdout);
+                say_err(&out.stderr);
+            }
             note = ounce_hb::diagnose::truncation_note(&out);
-            ounce_hb::diagnose::from_output(&out)
+            let reason = ounce_hb::diagnose::from_output(&out);
+            captured = Some(out);
+            reason
         }
         Err(e) => ounce_hb::diagnose::from_error(&e),
     };
@@ -409,14 +551,35 @@ fn run(path: &str, guest: &[String], backend: Option<&str>, auto: bool) -> ExitC
     if let Some(note) = note {
         say_err(&note);
     }
+    if opts.json {
+        emit_run_json(
+            path,
+            reason.exit_code(),
+            reason.label(),
+            captured.as_ref(),
+            opts,
+        );
+    }
     ExitCode::from(reason.exit_code())
 }
 
-fn run_auto(path: &str, kind: ounce_hb::Kind, bytes: &[u8], guest: &[String]) -> ExitCode {
+fn run_auto(
+    path: &str,
+    kind: ounce_hb::Kind,
+    bytes: &[u8],
+    guest: &[String],
+    opts: RunOpts,
+) -> ExitCode {
     let runtime_available = ounce_hb::Engine::Runtime.locate().is_ok();
     if !runtime_available {
         let core_sel = Some(std::ffi::OsString::from("core"));
-        let reason = match ounce_hb::run_engine(&ounce_hb::Engine::Core, kind, bytes, guest) {
+        let reason = match ounce_hb::run_engine_timeout(
+            &ounce_hb::Engine::Core,
+            kind,
+            bytes,
+            guest,
+            opts.timeout,
+        ) {
             Ok(out) => {
                 say_out(&out.stdout);
                 say_err(&out.stderr);
@@ -428,7 +591,8 @@ fn run_auto(path: &str, kind: ounce_hb::Kind, bytes: &[u8], guest: &[String]) ->
         return ExitCode::from(reason.exit_code());
     }
 
-    let rt_res = ounce_hb::run_engine(&ounce_hb::Engine::Runtime, kind, bytes, guest);
+    let rt_res =
+        ounce_hb::run_engine_timeout(&ounce_hb::Engine::Runtime, kind, bytes, guest, opts.timeout);
     let rt_out = match rt_res {
         Ok(out) => out,
         Err(e) => {
@@ -457,7 +621,13 @@ fn run_auto(path: &str, kind: ounce_hb::Kind, bytes: &[u8], guest: &[String]) ->
         "ounce-hb: runtime stopped abnormally (code {}); escalating to ounce-core for deterministic attribution...\n",
         rt_reason.exit_code()
     ));
-    let core_out = match ounce_hb::run_engine(&ounce_hb::Engine::Core, kind, bytes, guest) {
+    let core_out = match ounce_hb::run_engine_timeout(
+        &ounce_hb::Engine::Core,
+        kind,
+        bytes,
+        guest,
+        opts.timeout,
+    ) {
         Ok(out) => out,
         Err(e) => {
             let reason = ounce_hb::diagnose::from_error(&e);

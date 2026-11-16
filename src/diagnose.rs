@@ -96,6 +96,26 @@ impl StopReason {
         }
     }
 
+    /// Stable machine-readable name of this outcome, for `--json`.
+    pub fn label(&self) -> &'static str {
+        match self {
+            StopReason::CleanExit => "clean_exit",
+            StopReason::Unrecognised { .. } => "unrecognised",
+            StopReason::Refused { .. } => "refused",
+            StopReason::CoreMissing { .. } => "core_missing",
+            StopReason::Timeout { .. } => "timeout",
+            StopReason::HostIo { .. } => "host_io",
+            StopReason::UnimplementedInstruction { .. } => "unimplemented_instruction",
+            StopReason::MemoryFault { .. } => "memory_fault",
+            StopReason::CpuError { .. } => "cpu_error",
+            StopReason::Break { .. } => "break",
+            StopReason::UnhandledSvc { .. } => "unhandled_svc",
+            StopReason::CpuHalted { .. } => "cpu_halted",
+            StopReason::BudgetExhausted { .. } => "budget_exhausted",
+            StopReason::LoaderError { .. } => "loader_error",
+        }
+    }
+
     /// Plain-words message for `ounce-hb run` to print after the guest's own output. Empty for a clean
     /// exit. Otherwise it names the category and the exit code, says why in one line, and ends with the
     /// `ounce-hb run` command that reproduces the run. `program` and `args` are copied as given.

@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
   workflow_dispatch:
 
 permissions:
@@ -25,6 +25,10 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary_name: ounce-hb
             archive_name: ounce-hb-linux-x86_64.tar.gz
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            binary_name: ounce-hb
+            archive_name: ounce-hb-linux-arm64.tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
             binary_name: ounce-hb
@@ -124,7 +128,7 @@ jobs:
       - name: Generate archive checksums (SHA256SUMS)
         run: |
           cd dist
-          sha256sum ounce-hb-linux-x86_64.tar.gz ounce-hb-macos-arm64.tar.gz ounce-hb-windows-x86_64.zip > SHA256SUMS
+          sha256sum *.tar.gz *.zip > SHA256SUMS
 
       - name: Publish draft release
         uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191 # v2.0.8

@@ -79,12 +79,32 @@ cargo run -- run path/to/app.nro
 # Select the performance/graphical engine (still run headlessly)
 cargo run -- run --backend runtime path/to/app.nro
 
+# Run on ounce-runtime first and automatically escalate to ounce-core on abnormal stops
+cargo run -- run --auto path/to/app.nro
+
 # Or use a specific executable (options also work after the NRO path)
 cargo run -- run path/to/app.nro --backend ./target/release/ounce-runtime
 
 # Run with guest arguments (separated by --)
 cargo run -- run path/to/app.nro --backend core -- arg1 arg2
+
+# Check host capabilities and installed engine binaries
+cargo run -- doctor --json
+
+# Replay one ounce.repro.v1 bundle or a directory of *.repro.json bundles
+cargo run -- repro ounce-repro.json
 ```
+
+### Auto-Escalation (`--auto` / `--backend auto`)
+Passing `--auto` or `--backend auto` runs `ounce-runtime` first when available (falling back to `ounce-core` if `ounce-runtime` is not installed). If `ounce-runtime` reports a silent fallback or stops abnormally (exit codes `10`–`15`), `ounce-hb` automatically escalates to `ounce-core` for deterministic attribution:
+- **Guest Bug**: `ounce-runtime` and `ounce-core` failed identically.
+- **Runtime Divergence**: the engines disagreed; `ounce-hb` writes an `ounce.repro.v1` bundle to `ounce-repro.json` and suggests `ounce-core diverge <path>` on an AArch64 host.
+
+### Environment Diagnostics (`doctor`)
+`ounce-hb doctor [--json]` reports the host OS/architecture, whether AArch64 hardware replay is available, and the resolved paths and `--version` strings for `ounce-core` and optional `ounce-runtime`. It exits `0` when at least one engine binary is found and `3` if neither is found.
+
+### Replaying Repro Bundles (`repro`)
+`ounce-hb repro [--backend <core|runtime|path>] <bundle.json|dir>` loads an `ounce-repro.json` / `*.repro.json` (`ounce.repro.v1`) manifest—or all manifests in a directory—and verifies that the selected backend (default `core`) matches the recorded `stop_kind` and `exit_code`. It exits `0` if all manifests pass, `1` if any fail, and `2` on invalid input or missing manifests.
 
 ### Backend Selection
 `--backend <core|runtime|path>` overrides `OUNCE_BACKEND`; an unset or empty environment

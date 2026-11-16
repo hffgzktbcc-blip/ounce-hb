@@ -45,12 +45,12 @@ fn usage_without_args() {
 #[test]
 fn words_between_the_program_and_the_separator_are_refused() {
     let out = bin()
-        .args(["run", "x.nro", "--timeout", "5", "--", "a"])
+        .args(["run", "x.nro", "--bogus", "5", "--", "a"])
         .output()
         .unwrap();
     let err = String::from_utf8_lossy(&out.stderr);
     assert_eq!(out.status.code(), Some(2), "{err}");
-    assert!(err.contains("unexpected argument \"--timeout\""), "{err}");
+    assert!(err.contains("unexpected argument \"--bogus\""), "{err}");
     assert!(err.contains("after '--'"), "{err}");
     assert!(err.contains("usage:"), "{err}");
 

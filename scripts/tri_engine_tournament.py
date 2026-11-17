@@ -459,11 +459,11 @@ def render_markdown(results: Dict[str, Any]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Tri-Engine Tournament Runner")
-    parser.add_argument("--core", type=Path, default=Path("/Users/nathanaelgovender/orca/ounce-core/target/release/ounce-core"))
-    parser.add_argument("--runtime", type=Path, default=Path("/Users/nathanaelgovender/orca/ounce-runtime/target/release/ounce-runtime"))
+    parser.add_argument("--core", type=Path, required=True, help="path to the core in your own checkout")
+    parser.add_argument("--runtime", type=Path, required=True, help="path to the runtime in your own checkout")
     parser.add_argument("--hb", type=Path, default=REPO_ROOT / "target" / "release" / "ounce-hb")
-    parser.add_argument("--conformance-script", type=Path, default=Path("/Users/nathanaelgovender/orca/ounce-core/scripts/run_conformance.py"))
-    parser.add_argument("--conformance-dir", type=Path, default=Path("/Users/nathanaelgovender/orca/ounce-core/conformance/arm64-v0.2.0"))
+    parser.add_argument("--conformance-script", type=Path, required=True, help="path to the conformance script in your own checkout")
+    parser.add_argument("--conformance-dir", type=Path, required=True, help="path to the conformance dir in your own checkout")
     parser.add_argument("--output", type=Path, default=REPO_ROOT / "docs")
 
     args = parser.parse_args()

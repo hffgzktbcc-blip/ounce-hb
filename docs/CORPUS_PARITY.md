@@ -1,5 +1,7 @@
 # Corpus parity: ounce-core CLI versus ounce-hb
 
+> **Nightly coverage warning (17 Nov 2026):** The scheduled `nightly-parity.yml` job checks out Core v0.8.1 but **does not build corpus NROs**. `corpus_parity.py` treats missing NROs as not evaluated by default, so a green workflow alone is **not** evidence that any corpus programs ran. Check each run's Job Summary for the actual `executed / total` count; the workflow now emits a warning when it runs zero or only a partial set. To produce substantive parity evidence, supply built NROs for the pinned manifest and rerun the comparison; this is distinct from Core's separately verified first-frame oracle job.
+
 `scripts/corpus_parity.py` checks that `ounce-hb run` reports what `ounce-core run-nro` reports, for each
 program in ounce-core's outside-program corpus. It is a subprocess comparison. It is not a frame or
 pixel check, and a `match` is not a pass of the corpus oracles.

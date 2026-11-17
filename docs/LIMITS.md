@@ -1,5 +1,7 @@
 # Limits & Current Capabilities
 
+> **Version scope (17 November 2026):** This page's M0 and Core v0.8.x notes describe the original milestone, **not** the complete feature set of the now-published [HB v0.1.0](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.1.0). For newer CLI `doctor`, `repro` and `--auto` features consult [README](../README.md) and [CHANGELOG](../CHANGELOG.md). Changes in the changelog's *Unreleased* section (including newer `run --timeout` and `run --json` options) must not be assumed to exist in the v0.1.0 archive. Existing safety limits and unimplemented features below remain conservatively stated until each is retested.
+
 This document provides an honest, comprehensive account of what ounce-hb can do today, what it
 cannot yet do, and what it will never do.
 
@@ -47,5 +49,5 @@ The following features are not yet implemented in M0:
 - **Networking**: BSD socket emulation and network communication services are not implemented.
 - **32-bit Support**: Only 64-bit ARM (AArch64) homebrew executables are supported; 32-bit (AArch32) executables are not supported.
 - **Guest-Argument Limit**: guest arguments may total at most 16 KiB (each argument's bytes plus one NUL). Longer sets are refused with exit code 2 before ounce-core starts. This works around [ounce-core #418](https://github.com/hffgzktbcc-blip/ounce-core/issues/418), where longer arguments overwrite the program's first instruction; see [DIAGNOSIS.md](DIAGNOSIS.md#guest-argument-limit).
-- **Host Audio Noise**: ounce-core v0.8.0 opens the default audio device on every run and has no switch to skip it. ounce-core v0.8.1 opens none for `--present=headless` (its release notes and unit test say so; ounce-hb's own end-to-end tests have not yet been run against v0.8.1 on a machine without audio). On machines with no sound device it prints ALSA or `[HostAudioSink]` errors on stderr even for clean runs. Exit status and explanations are unaffected; see [DIAGNOSIS.md](DIAGNOSIS.md#host-audio-noise-on-stderr).
-- **Stop Explanations**: Only the ounce-core v0.8.0 stop lines listed in [DIAGNOSIS.md](DIAGNOSIS.md) are recognised. Another ounce-core version may word them differently; such a run is reported as unrecognised with its output kept, not explained.
+- **Host Audio Noise**: ounce-core v0.8.0 opens the default audio device on every run and has no switch to skip it. ounce-core v0.8.1 opens none for `--present=headless` (its release notes and unit test say so; ounce-hb's end-to-end job runs against v0.8.1 on hosted Linux, macOS and Windows runners, but nobody has checked it on a machine without a sound device). On machines with no sound device it prints ALSA or `[HostAudioSink]` errors on stderr even for clean runs. Exit status and explanations are unaffected; see [DIAGNOSIS.md](DIAGNOSIS.md#host-audio-noise-on-stderr).
+- **Stop Explanations**: Only the ounce-core stop lines listed in [DIAGNOSIS.md](DIAGNOSIS.md) (worded the same in v0.8.0 and v0.8.1) are recognised. Another ounce-core version may word them differently; such a run is reported as unrecognised with its output kept, not explained.

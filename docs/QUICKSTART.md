@@ -80,8 +80,8 @@ A directory is every `*.repro.json` and `ounce-repro.json` inside it, sorted.
 The selected backend (default `core`) must reproduce the recorded `stop_kind`
 and `exit_code`. Exit 0 if all match, 1 if any do not, 2 if the input is
 missing or not a valid manifest. When the manifest's `core` section records
-`framebuffer_hash` and/or `frames_presented` (ounce-core 0.9.0 or later writes them for runs that
-present frames), those must match too; a missing actual hash counts as a mismatch. Manifests
+`framebuffer_hash` and/or `frames_presented` (ounce-core builds after v0.9.0 write them for runs that
+present frames; v0.9.0 itself does not), those must match too; a missing actual hash counts as a mismatch. Manifests
 without them are checked as before. `run --auto` does not compare hashes yet.
 
 ## GitHub Action

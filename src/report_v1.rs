@@ -20,6 +20,10 @@ pub struct ReportV1 {
     pub svc_id: Option<u32>,
     pub break_result: Option<u32>,
     pub insns_executed: u64,
+    /// Frames the engine presented; `0` when absent (older engines) or when none were presented.
+    pub frames_presented: u64,
+    /// `fnv1a64:<16 hex>` of the last presented frame before any overlay; `None` when absent or `null`.
+    pub framebuffer_hash: Option<String>,
     pub message: Option<String>,
 }
 
@@ -44,6 +48,8 @@ impl ReportV1 {
             svc_id: extract_u64(json, "svc_id").map(|v| v as u32),
             break_result: extract_u64(json, "break_result").map(|v| v as u32),
             insns_executed: extract_u64(json, "insns_executed").unwrap_or(0),
+            frames_presented: extract_u64(json, "frames_presented").unwrap_or(0),
+            framebuffer_hash: extract_str(json, "framebuffer_hash"),
             message: extract_str(json, "message"),
         })
     }
@@ -137,6 +143,17 @@ pub fn format_repro_bundle(
     let core_insns = core_report
         .map(|r| r.insns_executed.to_string())
         .unwrap_or_else(|| "null".to_string());
+    let frames = |r: Option<&ReportV1>| {
+        r.map(|r| r.frames_presented.to_string())
+            .unwrap_or_else(|| "null".to_string())
+    };
+    let hash = |r: Option<&ReportV1>| {
+        r.and_then(|r| r.framebuffer_hash.as_ref())
+            .map(|h| format!("\"{}\"", escape_json(h)))
+            .unwrap_or_else(|| "null".to_string())
+    };
+    let (rt_frames, core_frames) = (frames(runtime_report), frames(core_report));
+    let (rt_hash, core_hash) = (hash(runtime_report), hash(core_report));
     let rt_exit = runtime_exit
         .map(|v| v.to_string())
         .unwrap_or_else(|| "null".to_string());
@@ -145,7 +162,7 @@ pub fn format_repro_bundle(
         .unwrap_or_else(|| "null".to_string());
 
     format!(
-        "{{\n  \"schema\": \"ounce.repro.v1\",\n  \"program_path\": \"{}\",\n  \"program_bytes\": {},\n  \"guest_args\": [{}],\n  \"runtime\": {{\n    \"tier\": {},\n    \"stop_kind\": {},\n    \"exit_code\": {},\n    \"pc\": {},\n    \"insns_executed\": {}\n  }},\n  \"core\": {{\n    \"stop_kind\": {},\n    \"exit_code\": {},\n    \"pc\": {},\n    \"insns_executed\": {}\n  }}\n}}\n",
+        "{{\n  \"schema\": \"ounce.repro.v1\",\n  \"program_path\": \"{}\",\n  \"program_bytes\": {},\n  \"guest_args\": [{}],\n  \"runtime\": {{\n    \"tier\": {},\n    \"stop_kind\": {},\n    \"exit_code\": {},\n    \"pc\": {},\n    \"insns_executed\": {},\n    \"frames_presented\": {},\n    \"framebuffer_hash\": {}\n  }},\n  \"core\": {{\n    \"stop_kind\": {},\n    \"exit_code\": {},\n    \"pc\": {},\n    \"insns_executed\": {},\n    \"frames_presented\": {},\n    \"framebuffer_hash\": {}\n  }}\n}}\n",
         escape_json(program_path),
         program_len,
         args_json.join(", "),
@@ -154,10 +171,14 @@ pub fn format_repro_bundle(
         rt_exit,
         rt_pc,
         rt_insns,
+        rt_frames,
+        rt_hash,
         core_kind,
         core_exit_str,
         core_pc,
         core_insns,
+        core_frames,
+        core_hash,
     )
 }
 
@@ -168,6 +189,9 @@ pub struct ReproManifest {
     pub guest_args: Vec<String>,
     pub expected_stop_kind: Option<String>,
     pub expected_exit_code: Option<i32>,
+    /// From the manifest's `core` section; checked by `ounce-hb repro` only when present.
+    pub expected_frames_presented: Option<u64>,
+    pub expected_framebuffer_hash: Option<String>,
 }
 
 impl ReproManifest {
@@ -183,11 +207,17 @@ impl ReproManifest {
         let expected_stop_kind = core_section.and_then(|s| extract_str(s, "stop_kind"));
         let expected_exit_code =
             core_section.and_then(|s| extract_u64(s, "exit_code").map(|v| v as i32));
+        let expected_frames_presented =
+            core_section.and_then(|s| extract_u64(s, "frames_presented"));
+        let expected_framebuffer_hash =
+            core_section.and_then(|s| extract_str(s, "framebuffer_hash"));
         Some(Self {
             program_path,
             guest_args,
             expected_stop_kind,
             expected_exit_code,
+            expected_frames_presented,
+            expected_framebuffer_hash,
         })
     }
 }
@@ -383,6 +413,78 @@ mod tests {
                 word: 3735928559,
                 pc: 2147483904,
             }
+        );
+    }
+
+    #[test]
+    fn parses_frames_presented_and_framebuffer_hash() {
+        let with = r#"{"schema": "ounce.run.v1", "engine": "ounce-core", "stop_kind": "frame_limit",
+  "exit_code": 0, "insns_executed": 9, "frames_presented": 5, "framebuffer_hash": "fnv1a64:3a00ccf6b6f28ea1",
+  "message": null}"#;
+        let r = ReportV1::parse(with).unwrap();
+        assert_eq!(r.frames_presented, 5);
+        assert_eq!(
+            r.framebuffer_hash.as_deref(),
+            Some("fnv1a64:3a00ccf6b6f28ea1")
+        );
+        // null hash, and reports from engines that predate the fields
+        let null = r#"{"schema": "ounce.run.v1", "engine": "e", "stop_kind": "clean_exit", "frames_presented": 0, "framebuffer_hash": null}"#;
+        let r = ReportV1::parse(null).unwrap();
+        assert_eq!((r.frames_presented, r.framebuffer_hash), (0, None));
+        let old = r#"{"schema": "ounce.run.v1", "engine": "e", "stop_kind": "clean_exit"}"#;
+        let r = ReportV1::parse(old).unwrap();
+        assert_eq!((r.frames_presented, r.framebuffer_hash), (0, None));
+        // a message that merely mentions the key must not be read as the field
+        let tricky = r#"{"schema": "ounce.run.v1", "engine": "e", "stop_kind": "clean_exit", "message": "saw \"framebuffer_hash\" in log", "framebuffer_hash": "fnv1a64:0000000000000001"}"#;
+        assert_eq!(
+            ReportV1::parse(tricky).unwrap().framebuffer_hash.as_deref(),
+            Some("fnv1a64:0000000000000001")
+        );
+    }
+
+    #[test]
+    fn repro_bundle_round_trips_hash_and_frames_from_the_core_section() {
+        let mk = |frames, hash: Option<&str>| ReportV1 {
+            schema: "ounce.run.v1".into(),
+            engine: "e".into(),
+            engine_version: String::new(),
+            tier: "interpreter".into(),
+            silent_fallback: false,
+            stop_kind: "frame_limit".into(),
+            exit_code: 0,
+            pc: None,
+            opcode: None,
+            fault_addr: None,
+            svc_id: None,
+            break_result: None,
+            insns_executed: 1,
+            frames_presented: frames,
+            framebuffer_hash: hash.map(str::to_string),
+            message: None,
+        };
+        let rt = mk(5, Some("fnv1a64:aaaaaaaaaaaaaaaa"));
+        let core = mk(5, Some("fnv1a64:bbbbbbbbbbbbbbbb"));
+        let json = format_repro_bundle("p.nro", 1, &[], Some(&rt), Some(&core), Some(0), Some(0));
+        let m = ReproManifest::parse(&json).unwrap();
+        assert_eq!(m.expected_frames_presented, Some(5));
+        assert_eq!(
+            m.expected_framebuffer_hash.as_deref(),
+            Some("fnv1a64:bbbbbbbbbbbbbbbb")
+        );
+        // no hash on either side stays null and parses as absent
+        let json = format_repro_bundle(
+            "p.nro",
+            1,
+            &[],
+            Some(&mk(0, None)),
+            Some(&mk(0, None)),
+            Some(0),
+            Some(0),
+        );
+        let m = ReproManifest::parse(&json).unwrap();
+        assert_eq!(
+            (m.expected_frames_presented, m.expected_framebuffer_hash),
+            (Some(0), None)
         );
     }
 

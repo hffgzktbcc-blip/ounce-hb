@@ -1,5 +1,7 @@
 # Limits & Current Capabilities
 
+> **Version scope (17 November 2026):** This page's M0 and Core v0.8.x notes describe the original milestone, **not** the complete feature set of the now-published [HB v0.1.0](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.1.0). For newer CLI `doctor`, `repro` and `--auto` features consult [README](../README.md) and [CHANGELOG](../CHANGELOG.md). Changes in the changelog's *Unreleased* section (including newer `run --timeout` and `run --json` options) must not be assumed to exist in the v0.1.0 archive. Existing safety limits and unimplemented features below remain conservatively stated until each is retested.
+
 This document provides an honest, comprehensive account of what ounce-hb can do today, what it
 cannot yet do, and what it will never do.
 

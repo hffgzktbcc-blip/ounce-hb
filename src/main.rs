@@ -436,7 +436,20 @@ fn run_repro(path: &str, backend: Option<&str>) -> ExitCode {
             .expected_exit_code
             .is_none_or(|exp| Some(exp) == actual_code);
 
-        if kind_ok && code_ok {
+        // Only compared when the manifest recorded a hash; a missing actual hash is a failure, not a pass.
+        let actual_hash = parsed_report
+            .as_ref()
+            .and_then(|r| r.framebuffer_hash.as_deref());
+        let hash_ok = manifest
+            .expected_framebuffer_hash
+            .as_deref()
+            .is_none_or(|exp| Some(exp) == actual_hash);
+        let actual_frames = parsed_report.as_ref().map(|r| r.frames_presented);
+        let frames_ok = manifest
+            .expected_frames_presented
+            .is_none_or(|exp| Some(exp) == actual_frames);
+
+        if kind_ok && code_ok && hash_ok && frames_ok {
             passed += 1;
             println!(
                 "[repro] PASS {} (stop_kind={}, exit_code={:?})",
@@ -454,6 +467,15 @@ fn run_repro(path: &str, backend: Option<&str>) -> ExitCode {
                 actual_kind,
                 actual_code
             ));
+            if !hash_ok || !frames_ok {
+                say_err(&format!(
+                    "[repro]   framebuffer_hash expected {:?}, got {:?}; frames_presented expected {:?}, got {:?}\n",
+                    manifest.expected_framebuffer_hash,
+                    actual_hash,
+                    manifest.expected_frames_presented,
+                    actual_frames
+                ));
+            }
         }
     }
 

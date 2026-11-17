@@ -94,20 +94,20 @@ jobs:
           summary_path = Path(os.environ["GITHUB_STEP_SUMMARY"])
           if not report_path.is_file():
               with summary_path.open("a", encoding="utf-8") as out:
-                  out.write("### Corpus parity: report unavailable\\n\\nThe comparison did not produce an inspectable report.\\n")
+                  out.write("### Corpus parity: report unavailable\n\nThe comparison did not produce an inspectable report.\n")
               print("::warning::Corpus parity report was not produced")
           else:
               report = json.loads(report_path.read_text(encoding="utf-8"))
               counts = report["summary"]
               evaluated = counts["total"] - counts["missing"]
               with summary_path.open("a", encoding="utf-8") as out:
-                  out.write(f"### Corpus parity: {evaluated}/{counts['total']} programs actually executed\\n\\n")
-                  out.write(f"- Matching CLI outputs: {counts['match']}\\n")
-                  out.write(f"- Divergences: {counts['differ']}\\n")
-                  out.write(f"- Execution errors: {counts['error']}\\n")
-                  out.write(f"- Missing NROs (not tested): {counts['missing']}\\n")
-                  out.write("- Reference: pinned Core v0.8.1, **not** the latest release.\\n")
-                  out.write("- This is CLI stop/output parity, **not** framebuffer or first-frame compatibility.\\n")
+                  out.write(f"### Corpus parity: {evaluated}/{counts['total']} programs actually executed\n\n")
+                  out.write(f"- Matching CLI outputs: {counts['match']}\n")
+                  out.write(f"- Divergences: {counts['differ']}\n")
+                  out.write(f"- Execution errors: {counts['error']}\n")
+                  out.write(f"- Missing NROs (not tested): {counts['missing']}\n")
+                  out.write("- Reference: pinned Core v0.8.1, **not** the latest release.\n")
+                  out.write("- This is CLI stop/output parity, **not** framebuffer or first-frame compatibility.\n")
               if evaluated == 0:
                   print("::warning::No corpus NROs were built or executed; a green workflow is NOT a passing corpus-parity run")
               elif counts["missing"]:

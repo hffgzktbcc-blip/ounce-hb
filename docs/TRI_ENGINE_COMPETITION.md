@@ -1,3 +1,5 @@
+> **Snapshot, not live status.** Generated once on 2026-11-14 by `scripts/tri_engine_tournament.py` on one macOS machine. Rerun the script to refresh it; figures about ounce-core and ounce-runtime are as reported by that run.
+
 # The Great Tri-Engine Tournament: Scoreboard & Competition Results
 
 > **Contenders**:

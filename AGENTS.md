@@ -14,8 +14,9 @@ Guidelines for autonomous agents and contributors working in this repository.
 ---
 
 ## 2. Agent Workflow
+- **Orientation**: Direction for the family is the [ounce-core one-year roadmap](https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md); this repo's milestones are [docs/wiki/Roadmap.md](docs/wiki/Roadmap.md) and releases are in [CHANGELOG.md](CHANGELOG.md). Python script tests live in `scripts/test_*.py`.
 - **Inspect First**: Read relevant code and documentation before modifying files.
-- **Scope Discipline**: Stay within your assigned scope. Preserve unrelated files and do not touch `src/`, `tests/`, or `.github/workflows/` unless explicitly instructed.
+- **Scope Discipline**: Stay within your assigned scope. Preserve unrelated files and do not change files outside the task. `src/`, `tests/` and `.github/workflows/` are in scope when the task needs them.
 - **Honest Claims**: Never fabricate compatibility, pass rates, or benchmarks. State current limits plainly.
 - **Public Hygiene**: The repository is public. Do not commit private local paths, internal hostnames, or unvetted credentials.
 

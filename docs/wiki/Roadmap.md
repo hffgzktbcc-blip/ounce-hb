@@ -15,7 +15,7 @@ in [LIMITS.md](../LIMITS.md).
   category ([DIAGNOSIS.md](../DIAGNOSIS.md)).
 - [x] Refuse guest arguments that ounce-core would mishandle (leading `-`, over 16 KiB; see
   [ounce-core #418](https://github.com/hffgzktbcc-blip/ounce-core/issues/418)).
-- [x] End-to-end tests against the real ounce-core v0.8.0 release binary on Linux and macOS.
+- [x] End-to-end tests against the real ounce-core v0.8.1 release binary on Linux, macOS and Windows.
 - [x] Clean-room and provenance guardrails, `#![forbid(unsafe_code)]`, CI on Linux, macOS and Windows, dependency
   and licence checks, draft-only releases.
 - [x] Community files, issue forms and this wiki.

@@ -35,7 +35,7 @@ ounce-hb is one of four independent, open-source projects sharing an evidence-fi
 
 ## Tri-Engine Tournament & Performance Parity
 
-ounce-hb serves as the zero-shim orchestrator and diagnostic judge across the family engines. The full head-to-head competition results are published in [**docs/TRI_ENGINE_COMPETITION.md**](docs/TRI_ENGINE_COMPETITION.md):
+ounce-hb serves as the zero-shim orchestrator and diagnostic judge across the family engines. A one-off snapshot (2026-11-14, one macOS machine; figures for other repos are as reported by that run) of the head-to-head competition is in [**docs/TRI_ENGINE_COMPETITION.md**](docs/TRI_ENGINE_COMPETITION.md):
 
 - **Lockstep Instruction Parity**: Stage 20 benchmark confirms exact **15,304** instruction count agreement across both JIT engines (`ounce-core` and `ounce-runtime`).
 - **100% Hardware Conformance**: Both engines achieve a perfect **12/12** on the published ARM64 v0.2.0 trace suite (`FPSR.QC`, default NaNs, `FEAT_LRCPC2`, `FEAT_SHA3`, saturating arithmetic).
@@ -68,7 +68,7 @@ Issues, pull requests, or discussions requesting retail software support, keys, 
 ### Prerequisites
 1. **Rust stable toolchain** (see [rust-toolchain.toml](rust-toolchain.toml)).
 2. **ounce-core CLI binary**: ounce-hb executes validated homebrew via `ounce-core run-nro <app.nro> --present=headless`.
-   - Obtain a pre-built binary from the GitHub releases of [hffgzktbcc-blip/ounce-core](https://github.com/hffgzktbcc-blip/ounce-core/releases) (v0.8.0), or build from source from the [ounce-core repository](https://github.com/hffgzktbcc-blip/ounce-core).
+   - Obtain a pre-built binary from the GitHub releases of [hffgzktbcc-blip/ounce-core](https://github.com/hffgzktbcc-blip/ounce-core/releases) (v0.8.1 is the version CI tests against), or build from source from the [ounce-core repository](https://github.com/hffgzktbcc-blip/ounce-core).
    - Ensure `ounce-core` is available on your `PATH`, or specify its path directly via the `OUNCE_CORE_BIN` environment variable (e.g., `export OUNCE_CORE_BIN=/path/to/ounce-core`).
 
 ### Running a Homebrew Program

@@ -7,8 +7,7 @@ that you built yourself from source with [devkitPro](https://devkitpro.org/) and
 ounce-hb runs homebrew through the released [ounce-core](https://github.com/hffgzktbcc-blip/ounce-core)
 command-line tool by default, or a selected engine subprocess, and explains how each run stopped, with stable exit codes.
 
-> **Status: v0.0.1 (Milestone M0)**. The CLI validates input formats and refuses out-of-scope
-> containers. It executes validated NROs via an `ounce-core` subprocess runner in headless mode.
+> **Status: [v0.1.0 published 16 November 2026](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.1.0).** The released CLI validates input formats, rejects out-of-scope containers and runs supported NROs through a supervised engine subprocess. The source on `main` may have newer unreleased improvements; consult [CHANGELOG.md](CHANGELOG.md) before assuming a command exists in the release archive.
 > See [Usage](#usage), [docs/HOMEBREW_DEVELOPER_GUIDE.md](docs/HOMEBREW_DEVELOPER_GUIDE.md), [docs/LIMITS.md](docs/LIMITS.md), and
 > [docs/OUNCE_CORE_API_NEEDS.md](docs/OUNCE_CORE_API_NEEDS.md).
 
@@ -68,7 +67,7 @@ Issues, pull requests, or discussions requesting retail software support, keys, 
 ### Prerequisites
 1. **Rust stable toolchain** (see [rust-toolchain.toml](rust-toolchain.toml)).
 2. **ounce-core CLI binary**: ounce-hb executes validated homebrew via `ounce-core run-nro <app.nro> --present=headless`.
-   - Obtain a pre-built binary from the GitHub releases of [hffgzktbcc-blip/ounce-core](https://github.com/hffgzktbcc-blip/ounce-core/releases) (v0.8.0), or build from source from the [ounce-core repository](https://github.com/hffgzktbcc-blip/ounce-core).
+   - Obtain a pre-built binary from the GitHub releases of [hffgzktbcc-blip/ounce-core](https://github.com/hffgzktbcc-blip/ounce-core/releases) (currently v0.9.0), or build from source from the [ounce-core repository](https://github.com/hffgzktbcc-blip/ounce-core).
    - Ensure `ounce-core` is available on your `PATH`, or specify its path directly via the `OUNCE_CORE_BIN` environment variable (e.g., `export OUNCE_CORE_BIN=/path/to/ounce-core`).
 
 ### Running a Homebrew Program

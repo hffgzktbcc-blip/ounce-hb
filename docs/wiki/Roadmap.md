@@ -1,5 +1,7 @@
 # Project Roadmap
 
+> **Historical HB milestone plan (M0–M3), not the cross-repository priority list.** For coordinated Ounce Family priorities through November 2027, start with the [canonical family roadmap](https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md). HB [v0.1.0 was published on 16 November 2026](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.1.0); the old M3 text about obtaining a *first* tagged release is historical. Other M3 acceptance criteria still require their own evidence; do not mark the entire milestone complete solely because a release exists.
+
 Every milestone is a concrete, checkable capability increment, and each open item is a GitHub issue. We do
 not mark anything complete without a committed automated test or a recorded run. The current verified state is
 in [LIMITS.md](../LIMITS.md).

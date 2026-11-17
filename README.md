@@ -7,8 +7,7 @@ that you built yourself from source with [devkitPro](https://devkitpro.org/) and
 ounce-hb runs homebrew through the released [ounce-core](https://github.com/hffgzktbcc-blip/ounce-core)
 command-line tool by default, or a selected engine subprocess, and explains how each run stopped, with stable exit codes.
 
-> **Status: v0.0.1 (Milestone M0)**. The CLI validates input formats and refuses out-of-scope
-> containers. It executes validated NROs via an `ounce-core` subprocess runner in headless mode.
+> **Status: [v0.1.0 published 16 November 2026](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.1.0).** The released CLI validates input formats, rejects out-of-scope containers and runs supported NROs through a supervised engine subprocess. The source on `main` may have newer unreleased improvements; consult [CHANGELOG.md](CHANGELOG.md) before assuming a command exists in the release archive.
 > See [Usage](#usage), [docs/HOMEBREW_DEVELOPER_GUIDE.md](docs/HOMEBREW_DEVELOPER_GUIDE.md), [docs/LIMITS.md](docs/LIMITS.md), and
 > [docs/OUNCE_CORE_API_NEEDS.md](docs/OUNCE_CORE_API_NEEDS.md).
 
@@ -35,10 +34,12 @@ ounce-hb is one of four independent, open-source projects sharing an evidence-fi
 
 ## Tri-Engine Tournament & Performance Parity
 
+> These are bounded results for the named fixtures, specific test inputs and recorded host. They do not establish universal instruction correctness or general homebrew compatibility.
+
 ounce-hb serves as the zero-shim orchestrator and diagnostic judge across the family engines. A one-off snapshot (2026-11-14, one macOS machine; figures for other repos are as reported by that run) of the head-to-head competition is in [**docs/TRI_ENGINE_COMPETITION.md**](docs/TRI_ENGINE_COMPETITION.md):
 
 - **Lockstep Instruction Parity**: Stage 20 benchmark confirms exact **15,304** instruction count agreement across both JIT engines (`ounce-core` and `ounce-runtime`).
-- **100% Hardware Conformance**: Both engines achieve a perfect **12/12** on the published ARM64 v0.2.0 trace suite (`FPSR.QC`, default NaNs, `FEAT_LRCPC2`, `FEAT_SHA3`, saturating arithmetic).
+- **12/12 published ARM64 trace cases**: Both engines match the recorded outcomes on all **12/12** cases in the ARM64 v0.2.0 suite (`FPSR.QC`, default NaNs, `FEAT_LRCPC2`, `FEAT_SHA3`, saturating arithmetic).
 - **Execution Speedup Spectrum**: Seamlessly scale from Interpreter through Cranelift Tier-4 optimizing JIT up to Native Code Execution (NCE, >115 MIPS).
 
 ---
@@ -68,7 +69,7 @@ Issues, pull requests, or discussions requesting retail software support, keys, 
 ### Prerequisites
 1. **Rust stable toolchain** (see [rust-toolchain.toml](rust-toolchain.toml)).
 2. **ounce-core CLI binary**: ounce-hb executes validated homebrew via `ounce-core run-nro <app.nro> --present=headless`.
-   - Obtain a pre-built binary from the GitHub releases of [hffgzktbcc-blip/ounce-core](https://github.com/hffgzktbcc-blip/ounce-core/releases) (v0.8.1 is the version CI tests against), or build from source from the [ounce-core repository](https://github.com/hffgzktbcc-blip/ounce-core).
+   - Obtain a pre-built binary from the GitHub releases of [hffgzktbcc-blip/ounce-core](https://github.com/hffgzktbcc-blip/ounce-core/releases) (currently v0.9.0; v0.8.1 is the version nightly CI tests against), or build from source from the [ounce-core repository](https://github.com/hffgzktbcc-blip/ounce-core).
    - Ensure `ounce-core` is available on your `PATH`, or specify its path directly via the `OUNCE_CORE_BIN` environment variable (e.g., `export OUNCE_CORE_BIN=/path/to/ounce-core`).
 
 ### Running a Homebrew Program

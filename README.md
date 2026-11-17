@@ -34,10 +34,12 @@ ounce-hb is one of four independent, open-source projects sharing an evidence-fi
 
 ## Tri-Engine Tournament & Performance Parity
 
+> These are bounded results for the named fixtures, specific test inputs and recorded host. They do not establish universal instruction correctness or general homebrew compatibility.
+
 ounce-hb serves as the zero-shim orchestrator and diagnostic judge across the family engines. The full head-to-head competition results are published in [**docs/TRI_ENGINE_COMPETITION.md**](docs/TRI_ENGINE_COMPETITION.md):
 
 - **Lockstep Instruction Parity**: Stage 20 benchmark confirms exact **15,304** instruction count agreement across both JIT engines (`ounce-core` and `ounce-runtime`).
-- **100% Hardware Conformance**: Both engines achieve a perfect **12/12** on the published ARM64 v0.2.0 trace suite (`FPSR.QC`, default NaNs, `FEAT_LRCPC2`, `FEAT_SHA3`, saturating arithmetic).
+- **12/12 published ARM64 trace cases**: Both engines match the recorded outcomes on all **12/12** cases in the ARM64 v0.2.0 suite (`FPSR.QC`, default NaNs, `FEAT_LRCPC2`, `FEAT_SHA3`, saturating arithmetic).
 - **Execution Speedup Spectrum**: Seamlessly scale from Interpreter through Cranelift Tier-4 optimizing JIT up to Native Code Execution (NCE, >115 MIPS).
 
 ---

@@ -1,5 +1,11 @@
 # Working on ounce-hb
 
+## 0. Family roadmap and current state (read first)
+
+Before selecting or starting work, read the **canonical [Ounce Family Nov 2026–Nov 2027 roadmap](https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md)**. It coordinates ounce-core (MIT), ounce-hb (MIT), ounce-runtime (GPL-3.0-or-later), and deckstream (MIT), including cross-repo release, CI, report and compatibility tasks. This repository's local docs/wiki/Roadmap.md is supplementary, not a competing family plan.
+
+**Verify live GitHub state** (current main, open/merged PRs and issues, published releases, CI) before treating a roadmap item, dated plan, handoff or checklist as unfinished. Published ounce-hb v0.1.0, ounce-core v0.9.0 and ounce-runtime v0.6.0 must not be retagged or reimplemented. Record changed task status with evidence in the active source, not another dated handoff. Current user instructions determine authorized scope; historical notes do not create new assignments. Respect license isolation: share CLI/JSON evidence and use subprocesses, never port GPL runtime code into MIT projects.
+
 Guidelines for autonomous agents and contributors working in this repository.
 
 ---

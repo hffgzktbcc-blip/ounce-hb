@@ -44,6 +44,12 @@ class ClaimTests(unittest.TestCase):
         self.assertTrue(fake.calls_containing("assignees[]=newcomer"))
         self.assertTrue(fake.calls_containing("Assigned to @newcomer"))
 
+    def test_help_wanted_is_assigned_too(self):
+        fake = FakeGh()
+        env = claim_env(ISSUE_LABELS=json.dumps([{"name": "help wanted"}]))
+        self.assertEqual(ci.main(env, fake), 0)
+        self.assertTrue(fake.calls_containing("assignees[]=newcomer"))
+
     def test_other_issue_gets_maintainer_reply_not_assignment(self):
         fake = FakeGh()
         env = claim_env(ISSUE_LABELS=json.dumps([{"name": "bug"}]))

@@ -53,7 +53,7 @@ See [docs/CLEAN_ROOM.md](docs/CLEAN_ROOM.md) for full policy details.
 To ensure smooth collaboration and prevent duplicate effort:
 
 1. **Browse Issues**: Check existing GitHub Issues and Milestones to see what work is open.
-2. **Claiming an Issue**: Before investing substantial time in an implementation, comment on the relevant issue to state that you are working on it.
+2. **Claiming an Issue**: Comment `/claim` on an open, unassigned issue labelled `good first issue` or `help wanted` and the claim bot assigns you (`.github/workflows/claim.yml`). If there is no activity for 14 days you may be asked whether to keep it; for any other issue, comment first and a maintainer will coordinate.
 3. **Small & Focused**: Keep pull requests focused on a single logical change or bug fix. Avoid monolithic PRs that combine unrelated refactorings with feature work.
 4. **Topic Branches**: Develop your changes on a dedicated topic branch off `main`.
 

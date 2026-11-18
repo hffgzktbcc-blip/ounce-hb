@@ -65,7 +65,7 @@ def parse_labels(raw: str) -> Set[str]:
 
 def browse_url(repo: str) -> str:
     return (
-        f"https://github.com/{repo}/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22+no%3Aassignee"
+        f"https://github.com/{repo}/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22%2C%22help+wanted%22+no%3Aassignee"
     )
 
 
@@ -102,10 +102,10 @@ def main(env: Optional[Dict[str, str]] = None, runner: Optional[Runner] = None) 
         )
         return 0
 
-    if "good first issue" not in parse_labels(env.get("ISSUE_LABELS", "[]")):
+    if not parse_labels(env.get("ISSUE_LABELS", "[]")) & {"good first issue", "help wanted"}:
         post(
             f"{CLAIM_MARKER}\n"
-            "Self-assignment is available for issues labeled 'good first issue'. "
+            "Self-assignment is available for issues labeled 'good first issue' or 'help wanted'. "
             "For other issues, a maintainer will coordinate assignment.\n\n"
             f"You can browse open beginner tasks here:\n{browse_url(repo)}"
         )

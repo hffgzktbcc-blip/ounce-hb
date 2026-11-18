@@ -15,8 +15,45 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Decides whether the Rust build/lint/test steps are needed. Docs-only changes (Markdown, docs/,
+  # LICENSE, issue templates) skip them. Anything else, including workflow edits, runs everything,
+  # and so does every push to main. The `check` job below always runs (cheap steps only on
+  # docs-only changes) so the required status names `check (<os>)` still report on every PR.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.scope.outputs.code }}
+    steps:
+      - name: Decide scope
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if ! files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename'); then
+            echo "Could not list changed files; running everything."
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "$files"
+          if [ -z "$files" ] || printf '%s\n' "$files" | grep -qvE '(\.md$|^docs/|^LICENSE|^\.github/ISSUE_TEMPLATE/)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Docs-only change: skipping build, lint and tests."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   check:
     name: check (${{ matrix.os }})
+    needs: changes
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -50,17 +87,21 @@ jobs:
           "$PYTHON" -m unittest discover -s scripts -p 'test_*.py' -v
 
       - name: Toolchain
+        if: needs.changes.outputs.code == 'true'
         run: |
           rustup show active-toolchain || rustup toolchain install stable --profile minimal -c rustfmt -c clippy
           rustc --version
 
       - name: fmt
+        if: needs.changes.outputs.code == 'true'
         run: cargo fmt --all -- --check
 
       - name: clippy
+        if: needs.changes.outputs.code == 'true'
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: test
+        if: needs.changes.outputs.code == 'true'
         run: cargo test --workspace --locked
 
   artifact-roundtrip:

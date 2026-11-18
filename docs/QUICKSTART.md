@@ -29,12 +29,13 @@ on `PATH`.
 
 ```sh
 ./target/release/ounce-hb run path/to/app.nro
-./target/release/ounce-hb run path/to/app.nro --backend core -- arg1 arg2
+./target/release/ounce-hb run --cpu tier4 --sdmc path/to/sdmc path/to/app.nro --backend core -- arg1 arg2
 ```
 
-There is no `--timeout` flag and no `--json` flag on `run`. A word in that
-position, including `--timeout`, is refused with exit 2. The wall clock limit
-is 60 seconds, or `OUNCE_HB_TIMEOUT_SECS` (a number from 1 to 86400). Guest
+Use `--cpu <interp|tier3|tier4>` to select the guest CPU engine and `--sdmc <dir>`
+to back the guest's `sdmc:/` mount with an existing host directory (a missing
+or non-directory path is refused with exit 2). The wall clock limit is 60
+seconds, or `--timeout <secs>` / `OUNCE_HB_TIMEOUT_SECS` (up to 86400). Guest
 arguments go after `--` and must not start with `-`.
 
 ```sh
@@ -73,8 +74,11 @@ the bundle before treating a divergence line as an engine bug.
 
 ```sh
 ./target/release/ounce-hb repro ounce-repro.json
-./target/release/ounce-hb repro --backend core path/to/directory
+./target/release/ounce-hb repro --backend core --cpu tier4 --sdmc path/to/sdmc path/to/directory
 ```
+
+`--cpu` and `--sdmc` default to the values recorded in the `ounce.repro.v1`
+manifest when omitted on the command line.
 
 A directory is every `*.repro.json` and `ounce-repro.json` inside it, sorted.
 The selected backend (default `core`) must reproduce the recorded `stop_kind`

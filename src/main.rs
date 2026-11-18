@@ -7,8 +7,8 @@ use std::time::Duration;
 
 const USAGE: &str = "\
 usage:
-  ounce-hb run [--backend <core|runtime|auto|path>] [--auto] [--timeout <secs>] [--json] <file.nro> [-- guest args...]
-  ounce-hb repro [--backend <core|runtime|path>] <bundle.json|dir>
+  ounce-hb run [--backend <core|runtime|auto|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] [--auto] [--timeout <secs>] [--json] <file.nro> [-- guest args...]
+  ounce-hb repro [--backend <core|runtime|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] <bundle.json|dir>
   ounce-hb doctor [--json]";
 
 enum Action<'a> {
@@ -18,30 +18,41 @@ enum Action<'a> {
     Repro {
         path: &'a str,
         backend: Option<&'a str>,
+        cpu: Option<ounce_hb::CpuTier>,
+        sdmc: Option<&'a str>,
     },
     Run {
         path: &'a str,
         guest: &'a [String],
         backend: Option<&'a str>,
         auto: bool,
-        opts: RunOpts,
+        opts: RunOpts<'a>,
     },
 }
 
 /// Options of `ounce-hb run` that do not select the engine.
 #[derive(Clone, Copy, Default)]
-struct RunOpts {
+struct RunOpts<'a> {
     /// `--timeout <secs>`; `None` defers to `OUNCE_HB_TIMEOUT_SECS`, then the default.
     timeout: Option<Duration>,
     /// `--json`: print one `ounce.hb.run.v1` object on stdout instead of the guest's output.
     json: bool,
+    /// `--cpu <interp|tier3|tier4>`: forwarded as `--cpu=<tier>`.
+    cpu: Option<ounce_hb::CpuTier>,
+    /// `--sdmc <dir>`: host directory mounted at `sdmc:/`.
+    sdmc: Option<&'a str>,
 }
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse(&args) {
         Ok(Action::Doctor { json }) => run_doctor(json),
-        Ok(Action::Repro { path, backend }) => run_repro(path, backend),
+        Ok(Action::Repro {
+            path,
+            backend,
+            cpu,
+            sdmc,
+        }) => run_repro(path, backend, cpu, sdmc),
         Ok(Action::Run {
             path,
             guest,
@@ -54,6 +65,51 @@ fn main() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+fn parse_cpu_arg(
+    arg: &str,
+    args: &[String],
+    i: &mut usize,
+    cpu: &mut Option<ounce_hb::CpuTier>,
+) -> Result<(), String> {
+    if cpu.is_some() {
+        return Err(format!("ounce-hb: duplicate --cpu.\n{USAGE}"));
+    }
+    let value = if let Some(v) = arg.strip_prefix("--cpu=") {
+        v
+    } else {
+        *i += 1;
+        args.get(*i).map(String::as_str).unwrap_or("")
+    };
+    *cpu = Some(ounce_hb::parse_cpu(value).map_err(|e| format!("ounce-hb: {e}\n{USAGE}"))?);
+    Ok(())
+}
+
+fn parse_sdmc_arg<'a>(
+    arg: &'a str,
+    args: &'a [String],
+    i: &mut usize,
+    sdmc: &mut Option<&'a str>,
+) -> Result<(), String> {
+    if sdmc.is_some() {
+        return Err(format!("ounce-hb: duplicate --sdmc.\n{USAGE}"));
+    }
+    let value = if let Some(v) = arg.strip_prefix("--sdmc=") {
+        Some(v).filter(|v| !v.is_empty())
+    } else {
+        *i += 1;
+        args.get(*i)
+            .map(String::as_str)
+            .filter(|v| !v.is_empty() && !v.starts_with('-'))
+    };
+    if value.is_none() {
+        return Err(format!(
+            "ounce-hb: --sdmc requires a directory path.\n{USAGE}"
+        ));
+    }
+    *sdmc = value;
+    Ok(())
 }
 
 fn parse(args: &[String]) -> Result<Action<'_>, String> {
@@ -73,6 +129,8 @@ fn parse(args: &[String]) -> Result<Action<'_>, String> {
         Some("repro") => {
             let mut path = None;
             let mut backend = None;
+            let mut cpu = None;
+            let mut sdmc = None;
             let mut i = 1;
             while i < args.len() {
                 match args[i].as_str() {
@@ -91,6 +149,12 @@ fn parse(args: &[String]) -> Result<Action<'_>, String> {
                             ));
                         }
                     }
+                    a if a == "--cpu" || a.starts_with("--cpu=") => {
+                        parse_cpu_arg(a, args, &mut i, &mut cpu)?;
+                    }
+                    a if a == "--sdmc" || a.starts_with("--sdmc=") => {
+                        parse_sdmc_arg(a, args, &mut i, &mut sdmc)?;
+                    }
                     value if path.is_none() && !value.starts_with('-') => path = Some(value),
                     other => {
                         return Err(format!("ounce-hb: unexpected argument {other:?}.\n{USAGE}"));
@@ -99,7 +163,12 @@ fn parse(args: &[String]) -> Result<Action<'_>, String> {
                 i += 1;
             }
             return path
-                .map(|p| Action::Repro { path: p, backend })
+                .map(|p| Action::Repro {
+                    path: p,
+                    backend,
+                    cpu,
+                    sdmc,
+                })
                 .ok_or_else(|| USAGE.to_string());
         }
         Some("run") => {}
@@ -151,6 +220,12 @@ fn parse(args: &[String]) -> Result<Action<'_>, String> {
                         "ounce-hb: --backend requires core, runtime, auto, or a path.\n{USAGE}"
                     ));
                 }
+            }
+            a if a == "--cpu" || a.starts_with("--cpu=") => {
+                parse_cpu_arg(a, args, &mut i, &mut opts.cpu)?;
+            }
+            a if a == "--sdmc" || a.starts_with("--sdmc=") => {
+                parse_sdmc_arg(a, args, &mut i, &mut opts.sdmc)?;
             }
             value if path.is_none() && !value.starts_with('-') => path = Some(value),
             extra => {
@@ -318,7 +393,31 @@ fn run_doctor(json: bool) -> ExitCode {
     }
 }
 
-fn run_repro(path: &str, backend: Option<&str>) -> ExitCode {
+fn resolve_manifest_path(manifest_path: &Path, target: &str) -> std::path::PathBuf {
+    if Path::new(target).is_absolute() {
+        std::path::PathBuf::from(target)
+    } else {
+        manifest_path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."))
+            .join(target)
+    }
+}
+
+fn run_repro(
+    path: &str,
+    backend: Option<&str>,
+    cpu: Option<ounce_hb::CpuTier>,
+    sdmc: Option<&str>,
+) -> ExitCode {
+    if let Some(dir) = sdmc
+        && let Err(e) = ounce_hb::validate_sdmc_dir(Path::new(dir))
+    {
+        say_err(&format!("ounce-hb: {e}\n"));
+        return ExitCode::from(2);
+    }
+
     let root = Path::new(path);
     let mut manifests = Vec::new();
     if root.is_dir() {
@@ -379,15 +478,7 @@ fn run_repro(path: &str, backend: Option<&str>) -> ExitCode {
             continue;
         };
 
-        let prog = if Path::new(&manifest.program_path).is_absolute() {
-            std::path::PathBuf::from(&manifest.program_path)
-        } else {
-            manifest_path
-                .parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or_else(|| Path::new("."))
-                .join(&manifest.program_path)
-        };
+        let prog = resolve_manifest_path(manifest_path, &manifest.program_path);
         let bytes = match std::fs::read(&prog) {
             Ok(b) => b,
             Err(e) => {
@@ -407,7 +498,29 @@ fn run_repro(path: &str, backend: Option<&str>) -> ExitCode {
                 continue;
             }
         };
-        let out = match ounce_hb::run_engine(&engine, kind, &bytes, &manifest.guest_args) {
+        let effective_cpu = cpu.or(manifest.cpu);
+        let effective_sdmc = if let Some(dir) = sdmc {
+            Some(std::path::PathBuf::from(dir))
+        } else if let Some(ref m_sdmc) = manifest.sdmc {
+            let resolved = resolve_manifest_path(manifest_path, m_sdmc);
+            if let Err(e) = ounce_hb::validate_sdmc_dir(&resolved) {
+                say_err(&format!("ounce-hb: {e}\n"));
+                failed += 1;
+                continue;
+            }
+            Some(resolved)
+        } else {
+            None
+        };
+        let out = match ounce_hb::run_engine_opts(
+            &engine,
+            kind,
+            &bytes,
+            &manifest.guest_args,
+            None,
+            effective_cpu,
+            effective_sdmc.as_deref(),
+        ) {
             Ok(o) => o,
             Err(e) => {
                 say_err(&format!("ounce-hb: repro execution failed: {e}\n"));
@@ -496,7 +609,7 @@ fn emit_run_json(
     code: u8,
     stop: &str,
     out: Option<&ounce_hb::RunOutput>,
-    opts: RunOpts,
+    opts: RunOpts<'_>,
 ) {
     let esc = ounce_hb::report_v1::escape_json;
     let guest_code = out
@@ -514,12 +627,27 @@ fn emit_run_json(
     ));
 }
 
-fn run(path: &str, guest: &[String], backend: Option<&str>, auto: bool, opts: RunOpts) -> ExitCode {
+fn run(
+    path: &str,
+    guest: &[String],
+    backend: Option<&str>,
+    auto: bool,
+    opts: RunOpts<'_>,
+) -> ExitCode {
     let wants_auto = auto || backend == Some("auto");
     if opts.json && wants_auto {
         say_err(
             "ounce-hb: --json is not supported with --auto yet (auto escalation prints several runs).\n",
         );
+        return ExitCode::from(2);
+    }
+    if let Some(dir) = opts.sdmc
+        && let Err(e) = ounce_hb::validate_sdmc_dir(Path::new(dir))
+    {
+        say_err(&format!("ounce-hb: {e}\n"));
+        if opts.json {
+            emit_run_json(path, 2, "refused", None, opts);
+        }
         return ExitCode::from(2);
     }
     let bytes = match std::fs::read(path) {
@@ -556,7 +684,15 @@ fn run(path: &str, guest: &[String], backend: Option<&str>, auto: bool, opts: Ru
         .map(ounce_hb::Engine::from_selection)
         .unwrap_or(ounce_hb::Engine::Core);
     let mut captured = None;
-    let reason = match ounce_hb::run_engine_timeout(&engine, kind, &bytes, guest, opts.timeout) {
+    let reason = match ounce_hb::run_engine_opts(
+        &engine,
+        kind,
+        &bytes,
+        guest,
+        opts.timeout,
+        opts.cpu,
+        opts.sdmc.map(Path::new),
+    ) {
         Ok(out) => {
             if !opts.json {
                 say_out(&out.stdout);
@@ -590,17 +726,19 @@ fn run_auto(
     kind: ounce_hb::Kind,
     bytes: &[u8],
     guest: &[String],
-    opts: RunOpts,
+    opts: RunOpts<'_>,
 ) -> ExitCode {
     let runtime_available = ounce_hb::Engine::Runtime.locate().is_ok();
     if !runtime_available {
         let core_sel = Some(std::ffi::OsString::from("core"));
-        let reason = match ounce_hb::run_engine_timeout(
+        let reason = match ounce_hb::run_engine_opts(
             &ounce_hb::Engine::Core,
             kind,
             bytes,
             guest,
             opts.timeout,
+            opts.cpu,
+            opts.sdmc.map(Path::new),
         ) {
             Ok(out) => {
                 say_out(&out.stdout);
@@ -613,8 +751,15 @@ fn run_auto(
         return ExitCode::from(reason.exit_code());
     }
 
-    let rt_res =
-        ounce_hb::run_engine_timeout(&ounce_hb::Engine::Runtime, kind, bytes, guest, opts.timeout);
+    let rt_res = ounce_hb::run_engine_opts(
+        &ounce_hb::Engine::Runtime,
+        kind,
+        bytes,
+        guest,
+        opts.timeout,
+        opts.cpu,
+        opts.sdmc.map(Path::new),
+    );
     let rt_out = match rt_res {
         Ok(out) => out,
         Err(e) => {
@@ -643,12 +788,14 @@ fn run_auto(
         "ounce-hb: runtime stopped abnormally (code {}); escalating to ounce-core for deterministic attribution...\n",
         rt_reason.exit_code()
     ));
-    let core_out = match ounce_hb::run_engine_timeout(
+    let core_out = match ounce_hb::run_engine_opts(
         &ounce_hb::Engine::Core,
         kind,
         bytes,
         guest,
         opts.timeout,
+        opts.cpu,
+        opts.sdmc.map(Path::new),
     ) {
         Ok(out) => out,
         Err(e) => {
@@ -677,10 +824,12 @@ fn run_auto(
         rt_reason.exit_code(),
         core_reason.exit_code()
     ));
-    let bundle = ounce_hb::report_v1::format_repro_bundle(
+    let bundle = ounce_hb::report_v1::format_repro_bundle_with_opts(
         path,
         bytes.len(),
         guest,
+        opts.cpu,
+        opts.sdmc,
         rt_report.as_ref(),
         core_report.as_ref(),
         rt_out.exit_code,

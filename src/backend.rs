@@ -37,6 +37,59 @@ pub const RUNTIME_BIN_ENV: &str = "OUNCE_RUNTIME_BIN";
 /// Default backend selection when the CLI does not specify one.
 pub const BACKEND_ENV: &str = "OUNCE_BACKEND";
 
+/// Guest CPU execution tier passed via `--cpu` to the backend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CpuTier {
+    Interpreter,
+    Tier3,
+    Tier4,
+}
+
+impl CpuTier {
+    /// Parses `interp` (or `interpreter`), `tier3`, or `tier4`.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "interp" | "interpreter" => Some(Self::Interpreter),
+            "tier3" => Some(Self::Tier3),
+            "tier4" => Some(Self::Tier4),
+            _ => None,
+        }
+    }
+
+    /// Canonical short name recorded in `ounce.repro.v1` manifests (`"interp"`, `"tier3"`, `"tier4"`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Interpreter => "interp",
+            Self::Tier3 => "tier3",
+            Self::Tier4 => "tier4",
+        }
+    }
+
+    /// Value passed to `ounce-core --cpu=<val>` (`ounce-core` expects `interpreter`, `tier3`, `tier4`).
+    pub fn as_flag_value(&self) -> &'static str {
+        match self {
+            Self::Interpreter => "interpreter",
+            Self::Tier3 => "tier3",
+            Self::Tier4 => "tier4",
+        }
+    }
+}
+
+/// Validates that a host `--sdmc` path exists and is a directory.
+pub fn validate_sdmc_dir(dir: &Path) -> Result<(), RunError> {
+    match fs::metadata(dir) {
+        Err(e) => Err(RunError::BadSdmc(format!(
+            "--sdmc directory {:?} does not exist: {e}",
+            dir.display()
+        ))),
+        Ok(m) if !m.is_dir() => Err(RunError::BadSdmc(format!(
+            "--sdmc path {:?} is not a directory.",
+            dir.display()
+        ))),
+        Ok(_) => Ok(()),
+    }
+}
+
 /// Engine selection. Custom paths use the same headless subprocess protocol.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Engine {
@@ -135,16 +188,33 @@ pub trait Backend {
     fn run_nro(&self, program: &Staged, args: &[String]) -> Result<RunOutput, RunError>;
 }
 
-/// Runs an engine CLI as a child process using the common protocol: `ounce-core run-nro <nro> --present=headless [args]`.
+/// Runs an engine CLI as a child process using the common protocol: `ounce-core run-nro <nro> --present=headless [--cpu=...] [--sdmc=...] [args]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Subprocess {
     bin: PathBuf,
     timeout: Duration,
+    cpu: Option<CpuTier>,
+    sdmc: Option<PathBuf>,
 }
 
 impl Subprocess {
     pub fn new(bin: PathBuf, timeout: Duration) -> Self {
-        Self { bin, timeout }
+        Self {
+            bin,
+            timeout,
+            cpu: None,
+            sdmc: None,
+        }
+    }
+
+    pub fn with_cpu(mut self, cpu: Option<CpuTier>) -> Self {
+        self.cpu = cpu;
+        self
+    }
+
+    pub fn with_sdmc(mut self, sdmc: Option<PathBuf>) -> Self {
+        self.sdmc = sdmc;
+        self
     }
 }
 
@@ -154,12 +224,19 @@ impl Backend for Subprocess {
         if let Some(bad) = args.iter().find(|a| a.starts_with('-')) {
             return Err(RunError::UnsupportedArg(bad.clone()));
         }
+        if let Some(ref dir) = self.sdmc {
+            validate_sdmc_dir(dir)?;
+        }
         let report_path = program.dir().join("report.json");
         let mut cmd = Command::new(&self.bin);
-        cmd.arg("run-nro")
-            .arg(program.path())
-            .arg(HEADLESS)
-            .args(args)
+        cmd.arg("run-nro").arg(program.path()).arg(HEADLESS);
+        if let Some(tier) = self.cpu {
+            cmd.arg(format!("--cpu={}", tier.as_flag_value()));
+        }
+        if let Some(ref dir) = self.sdmc {
+            cmd.arg(format!("--sdmc={}", dir.display()));
+        }
+        cmd.args(args)
             .env("OUNCE_REPORT_JSON", &report_path)
             .env("OUNCE_AUDIO", "null")
             .env("OUNCE_DETERMINISTIC", "1")

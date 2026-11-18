@@ -237,6 +237,8 @@ pub fn from_error(e: &RunError) -> StopReason {
         RunError::UnsupportedArg(_)
         | RunError::UnsupportedKind(_)
         | RunError::BadTimeout(_)
+        | RunError::BadCpu(_)
+        | RunError::BadSdmc(_)
         | RunError::GuestArgsTooLong { .. } => StopReason::Refused {
             message: e.to_string(),
         },

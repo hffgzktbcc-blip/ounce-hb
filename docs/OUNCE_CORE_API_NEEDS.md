@@ -6,7 +6,7 @@
 ounce-core CLI as:
 
 ```
-ounce-core run-nro <staged copy of the .nro> --present=headless [guest args]
+ounce-core run-nro <staged copy of the .nro> --present=headless [--cpu=<tier>] [--sdmc=<dir>] [guest args]
 ```
 
 - **Binary lookup:** the `OUNCE_CORE_BIN` environment variable first (it must name a file), then the
@@ -40,8 +40,7 @@ otherwise.
 
 ### Known gaps
 
-- The CPU engine (`--cpu`), `--sdmc` and `--gui` are not exposed. The subprocess runs ounce-core's
-  defaults, with the display set to headless.
+- `--gui` is not exposed (`ounce-hb` always passes `--present=headless`). `--cpu` (`interp|tier3|tier4`) and `--sdmc <dir>` are exposed on `ounce-hb run` and `ounce-hb repro`.
 - `Cargo.toml` has no `ounce-core` dependency: the subprocess backend runs the released binary and
   links nothing. A library backend would add one, pinned to a release tag.
 

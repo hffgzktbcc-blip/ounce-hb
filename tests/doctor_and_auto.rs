@@ -317,3 +317,253 @@ exit 0"#
         );
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn bisect_maps_pass_fail_and_infrastructure_exits_to_0_1_and_125() {
+    let ws = TempWorkspace::new("bisect-codes");
+    let pass_core = ws.write_script(
+        "pass-core",
+        r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{"schema":"ounce.run.v1","engine":"ounce-core","engine_version":"0.10.0","tier":"interpreter","silent_fallback":false,"stop_kind":"clean_exit","exit_code":0,"pc":null,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":null,"insns_executed":10,"message":null}
+EOF
+exit 0"#,
+    );
+    let fail_core = ws.write_script(
+        "fail-core",
+        r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{"schema":"ounce.run.v1","engine":"ounce-core","engine_version":"0.10.0","tier":"interpreter","silent_fallback":false,"stop_kind":"cpu_error","exit_code":12,"pc":2147483648,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":null,"insns_executed":10,"message":"bad"}
+EOF
+exit 1"#,
+    );
+    let slow_core = ws.write_script("slow-core", "sleep 30");
+    let nonexec_core = ws.0.join("nonexec-core");
+    fs::write(&nonexec_core, "#!/bin/sh\nexit 0\n").unwrap();
+
+    let manifest = ws.0.join("case.repro.json");
+    fs::write(
+        &manifest,
+        r#"{
+  "schema": "ounce.repro.v1",
+  "program_path": "app.nro",
+  "guest_args": [],
+  "core": { "stop_kind": "clean_exit", "exit_code": 0 }
+}"#,
+    )
+    .unwrap();
+
+    // Pass -> 0
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .args(["bisect", manifest.to_str().unwrap()])
+        .env("OUNCE_CORE_BIN", &pass_core)
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // Manifest mismatch -> 1
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .args(["bisect", manifest.to_str().unwrap()])
+        .env("OUNCE_CORE_BIN", &fail_core)
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // Refusal (exit 2: bad --sdmc, missing manifest) -> 125
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .args([
+            "bisect",
+            "--sdmc",
+            ws.0.join("missing-sdmc").to_str().unwrap(),
+            manifest.to_str().unwrap(),
+        ])
+        .env("OUNCE_CORE_BIN", &pass_core)
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(125),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .args(["bisect", ws.0.join("missing.repro.json").to_str().unwrap()])
+        .env("OUNCE_CORE_BIN", &pass_core)
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(125),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // CoreMissing (exit 3) -> 125
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .args(["bisect", manifest.to_str().unwrap()])
+        .env("OUNCE_CORE_BIN", ws.0.join("no-such-core"))
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(125),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // Timeout (exit 4) -> 125
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .args(["bisect", manifest.to_str().unwrap()])
+        .env("OUNCE_CORE_BIN", &slow_core)
+        .env("OUNCE_HB_TIMEOUT_SECS", "0.2")
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(125),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // HostIo (exit 5: non-executable core binary) -> 125
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .args(["bisect", manifest.to_str().unwrap()])
+        .env("OUNCE_CORE_BIN", &nonexec_core)
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(125),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn git_bisect_run_finds_planted_regression_and_skips_broken_commit() {
+    let ws = TempWorkspace::new("bisect-git");
+    let repo = ws.0.join("repo");
+    fs::create_dir_all(&repo).unwrap();
+
+    let git = |args: &[&str]| {
+        let out = Command::new("git")
+            .current_dir(&repo)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {:?} failed:\nstdout: {}\nstderr: {}",
+            args,
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "test@example.com"]);
+    git(&["config", "user.name", "Test"]);
+
+    let nro_bytes = fs::read(ws.0.join("app.nro")).unwrap();
+    let manifest_json = r#"{
+  "schema": "ounce.repro.v1",
+  "program_path": "app.nro",
+  "guest_args": [],
+  "core": { "stop_kind": "clean_exit", "exit_code": 0 }
+}"#;
+    fs::write(repo.join("case.repro.json"), manifest_json).unwrap();
+
+    // Stand-in core binary outside the repo that inspects `repo/state.txt`.
+    let state_path = repo.join("state.txt");
+    let core = ws.write_script(
+        "bisect-core",
+        &format!(
+            r#"STATE=$(cat "{}")
+if [ "$STATE" = "good" ]; then
+  cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{{"schema":"ounce.run.v1","engine":"ounce-core","engine_version":"0.10.0","tier":"interpreter","silent_fallback":false,"stop_kind":"clean_exit","exit_code":0,"pc":null,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":null,"insns_executed":10,"message":null}}
+EOF
+  exit 0
+else
+  cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{{"schema":"ounce.run.v1","engine":"ounce-core","engine_version":"0.10.0","tier":"interpreter","silent_fallback":false,"stop_kind":"cpu_error","exit_code":12,"pc":2147483648,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":null,"insns_executed":10,"message":"planted regression"}}
+EOF
+  exit 1
+fi"#,
+            state_path.display()
+        ),
+    );
+
+    // Commit 1: good
+    fs::write(repo.join("app.nro"), &nro_bytes).unwrap();
+    fs::write(&state_path, "good").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-q", "-m", "c1: good"]);
+    let good_sha = git(&["rev-parse", "HEAD"]).trim().to_string();
+
+    // Commits 2 & 3: skipped (missing app.nro -> exit 2 -> mapped to 125).
+    // Placing both skipped commits before c4 (good) lets git bisect visit 125
+    // and still uniquely identify c5 as the first bad commit.
+    fs::remove_file(repo.join("app.nro")).unwrap();
+    git(&["add", "-A"]);
+    git(&["commit", "-q", "-m", "c2: unbuilt skip 1"]);
+    fs::write(repo.join("skip_note.txt"), "still unbuilt\n").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-q", "-m", "c3: unbuilt skip 2"]);
+
+    // Commit 4: still good
+    fs::write(repo.join("app.nro"), &nro_bytes).unwrap();
+    fs::write(&state_path, "good").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-q", "-m", "c4: still good"]);
+
+    // Commit 5: first bad commit (planted regression)
+    fs::write(&state_path, "bad").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-q", "-m", "c5: planted bad"]);
+    let bad_sha = git(&["rev-parse", "HEAD"]).trim().to_string();
+
+    // Commit 6: still bad
+    fs::write(repo.join("extra.txt"), "more changes\n").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-q", "-m", "c6: later bad"]);
+
+    git(&["bisect", "start", "HEAD", &good_sha]);
+    let bisect_out = Command::new("git")
+        .current_dir(&repo)
+        .args([
+            "bisect",
+            "run",
+            env!("CARGO_BIN_EXE_ounce-hb"),
+            "bisect",
+            "case.repro.json",
+        ])
+        .env("OUNCE_CORE_BIN", &core)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&bisect_out.stdout);
+    let stderr = String::from_utf8_lossy(&bisect_out.stderr);
+    assert!(
+        bisect_out.status.success(),
+        "git bisect run failed:\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("mapping to 125 (git bisect skip)"),
+        "expected git bisect to hit a skipped commit:\n{stderr}"
+    );
+    assert!(
+        stdout.contains(&format!("{bad_sha} is the first bad commit")),
+        "expected {bad_sha} as first bad commit:\n{stdout}"
+    );
+}

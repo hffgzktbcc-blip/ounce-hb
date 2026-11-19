@@ -30,13 +30,17 @@ on `PATH`.
 ```sh
 ./target/release/ounce-hb run path/to/app.nro
 ./target/release/ounce-hb run --cpu tier4 --sdmc path/to/sdmc path/to/app.nro --backend core -- arg1 arg2
+./target/release/ounce-hb run --expect-stdout "PASS" --expect-hash fnv1a64:3a00ccf6b6f28ea1 path/to/app.nro
 ```
 
 Use `--cpu <interp|tier3|tier4>` to select the guest CPU engine and `--sdmc <dir>`
 to back the guest's `sdmc:/` mount with an existing host directory (a missing
-or non-directory path is refused with exit 2). The wall clock limit is 60
-seconds, or `--timeout <secs>` / `OUNCE_HB_TIMEOUT_SECS` (up to 86400). Guest
-arguments go after `--` and must not start with `-`.
+or non-directory path is refused with exit 2). Use `--expect-hash <hash>` and/or
+`--expect-stdout <substring>` to assert expected framebuffer hashes or stdout
+lines in CI and Makefiles (exiting `1` on mismatch when the run would otherwise
+succeed). The wall clock limit is 60 seconds, or `--timeout <secs>` /
+`OUNCE_HB_TIMEOUT_SECS` (up to 86400). Guest arguments go after `--` and must
+not start with `-`.
 
 ```sh
 OUNCE_HB_TIMEOUT_SECS=15 ./target/release/ounce-hb run path/to/app.nro
@@ -90,6 +94,21 @@ missing or not a valid manifest. When the manifest's `core` section records
 `framebuffer_hash` and/or `frames_presented` (ounce-core builds after v0.9.0 write them for runs that
 present frames; v0.9.0 itself does not), those must match too; a missing actual hash counts as a mismatch. Manifests
 without them are checked as before. `run --auto` also compares non-null `framebuffer_hash` values when both engines emit them.
+
+## Bisect
+
+```sh
+git bisect start HEAD <good-commit>
+git bisect run ./target/release/ounce-hb bisect ounce-repro.json
+```
+
+`ounce-hb bisect [--backend <core|runtime|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] <bundle.json|dir>`
+wraps `repro` for `git bisect run`, returning `0` on pass, `1` on mismatch, and
+`125` (`git bisect skip`) when an infrastructure or refusal error (exits `2`–`5`)
+occurs.
+
+See [INTEGRATION.md](INTEGRATION.md) for copy-paste `cargo-nx`, `devkitA64`,
+GitHub Actions, and VS Code `tasks.json` snippets.
 
 ## GitHub Action
 

@@ -721,6 +721,19 @@ fn run(
     ExitCode::from(reason.exit_code())
 }
 
+fn framebuffer_hashes_differ(
+    rt_report: Option<&ounce_hb::report_v1::ReportV1>,
+    core_report: Option<&ounce_hb::report_v1::ReportV1>,
+) -> bool {
+    match (
+        rt_report.and_then(|r| r.framebuffer_hash.as_deref()),
+        core_report.and_then(|r| r.framebuffer_hash.as_deref()),
+    ) {
+        (Some(rt_hash), Some(core_hash)) => rt_hash != core_hash,
+        _ => false,
+    }
+}
+
 fn run_auto(
     path: &str,
     kind: ounce_hb::Kind,
@@ -773,8 +786,14 @@ fn run_auto(
         .as_deref()
         .and_then(ounce_hb::report_v1::ReportV1::parse);
     let rt_reason = ounce_hb::diagnose::from_output(&rt_out);
-    let needs_escalation = rt_report.as_ref().is_some_and(|r| r.silent_fallback)
-        || matches!(rt_reason.exit_code(), 10..=15);
+    let rt_silent_fallback = rt_report.as_ref().is_some_and(|r| r.silent_fallback);
+    let rt_abnormal = matches!(rt_reason.exit_code(), 10..=15);
+    let rt_has_hash = rt_report
+        .as_ref()
+        .is_some_and(|r| r.framebuffer_hash.is_some());
+    let needs_escalation = rt_silent_fallback
+        || rt_abnormal
+        || (rt_has_hash && ounce_hb::Engine::Core.locate().is_ok());
 
     if !needs_escalation {
         say_out(&rt_out.stdout);
@@ -784,10 +803,14 @@ fn run_auto(
     }
 
     // Escalate to ounce-core for deterministic attribution (Guest Bug vs Runtime Divergence).
-    say_err(&format!(
-        "ounce-hb: runtime stopped abnormally (code {}); escalating to ounce-core for deterministic attribution...\n",
-        rt_reason.exit_code()
-    ));
+    if rt_silent_fallback || rt_abnormal {
+        say_err(&format!(
+            "ounce-hb: runtime stopped abnormally (code {}); escalating to ounce-core for deterministic attribution...\n",
+            rt_reason.exit_code()
+        ));
+    } else {
+        say_err("ounce-hb: runtime emitted framebuffer_hash; cross-checking with ounce-core...\n");
+    }
     let core_out = match ounce_hb::run_engine_opts(
         &ounce_hb::Engine::Core,
         kind,
@@ -813,17 +836,41 @@ fn run_auto(
     say_out(&core_out.stdout);
     say_err(&core_out.stderr);
 
-    if core_reason == rt_reason {
+    let hash_diverged = framebuffer_hashes_differ(rt_report.as_ref(), core_report.as_ref());
+    if !hash_diverged && core_reason == rt_reason {
+        if matches!(core_reason, ounce_hb::diagnose::StopReason::CleanExit) {
+            return ExitCode::from(0);
+        }
         say_err("ounce-hb: attribution = Guest Bug (runtime and ounce-core failed identically).\n");
         say_err(&core_reason.explain_backend(path, guest, Some(std::ffi::OsStr::new("core"))));
         return ExitCode::from(core_reason.exit_code());
     }
 
-    say_err(&format!(
-        "ounce-hb: attribution = Runtime Divergence (runtime exit {} vs ounce-core exit {}).\n",
-        rt_reason.exit_code(),
-        core_reason.exit_code()
-    ));
+    let rt_hash = rt_report
+        .as_ref()
+        .and_then(|r| r.framebuffer_hash.as_deref())
+        .unwrap_or("none");
+    let core_hash = core_report
+        .as_ref()
+        .and_then(|r| r.framebuffer_hash.as_deref())
+        .unwrap_or("none");
+    if hash_diverged && core_reason == rt_reason {
+        say_err(&format!(
+            "ounce-hb: attribution = Runtime Divergence (framebuffer_hash {rt_hash:?} vs {core_hash:?}).\n"
+        ));
+    } else if hash_diverged {
+        say_err(&format!(
+            "ounce-hb: attribution = Runtime Divergence (runtime exit {} vs ounce-core exit {}, framebuffer_hash {rt_hash:?} vs {core_hash:?}).\n",
+            rt_reason.exit_code(),
+            core_reason.exit_code()
+        ));
+    } else {
+        say_err(&format!(
+            "ounce-hb: attribution = Runtime Divergence (runtime exit {} vs ounce-core exit {}).\n",
+            rt_reason.exit_code(),
+            core_reason.exit_code()
+        ));
+    }
     let bundle = ounce_hb::report_v1::format_repro_bundle_with_opts(
         path,
         bytes.len(),

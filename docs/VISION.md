@@ -47,9 +47,17 @@ CPU and kernel emulation to ounce-core.
 | Milestone | Target | Description | Status |
 |---|---|---|---|
 | **M0** | Scaffold, runner, diagnostics | Format classification, retail-container refusal, guardrails CI, supervised `ounce-core` subprocess runner, plain-words stop diagnosis with stable exit codes, end-to-end tests against ounce-core v0.8.0. | **Done** |
-| **M1** | Corpus parity | Run ounce-core's registered corpus directly and through `ounce-hb`, compare how each stops, keep a nightly-checked baseline ([#7](https://github.com/hffgzktbcc-blip/ounce-hb/issues/7)). | In progress |
+| **M1** | Corpus parity | Run ounce-core's registered corpus directly and through `ounce-hb`, compare how each stops, keep a nightly-checked baseline ([#7](https://github.com/hffgzktbcc-blip/ounce-hb/issues/7), closed 2026-11-13; see [CORPUS_PARITY.md](CORPUS_PARITY.md) for current nightly corpus-build caveats). | **Done** |
 | **M2** | More than the console | NSO programs, and services, graphics and input for the libnx examples, one program at a time ([#9](https://github.com/hffgzktbcc-blip/ounce-hb/issues/9), [#10](https://github.com/hffgzktbcc-blip/ounce-hb/issues/10)). | Planned |
 | **M3** | Public preview | First release, tutorial, cross-platform walkthrough, parity numbers ([#11](https://github.com/hffgzktbcc-blip/ounce-hb/issues/11)). | Planned |
+
+### Q1–Q3 Developer Tooling Issues
+
+Tracked under the [Ounce Family 1-year roadmap](https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md):
+
+- **Q1 parity & CLI**: `run --timeout` / `--json` ([#51](https://github.com/hffgzktbcc-blip/ounce-hb/issues/51)), `README` / `doctor` toolchain checks ([#52](https://github.com/hffgzktbcc-blip/ounce-hb/issues/52)), `framebuffer_hash` comparison in `run --auto` / `repro` ([#53](https://github.com/hffgzktbcc-blip/ounce-hb/issues/53)).
+- **Q2 diagnostics & assertions**: safe recursive-descent JSON parser in `report_v1.rs` ([#54](https://github.com/hffgzktbcc-blip/ounce-hb/issues/54)), `ounce-hb bisect` ([#55](https://github.com/hffgzktbcc-blip/ounce-hb/issues/55)), `diff-trace` using `ounce.trace.v1` ([#56](https://github.com/hffgzktbcc-blip/ounce-hb/issues/56)), golden-output / `framebuffer_hash` assertion flag ([#57](https://github.com/hffgzktbcc-blip/ounce-hb/issues/57)).
+- **Q3 ecosystem & CI**: `cargo-nx` / devkitA64 / GitHub Actions integration snippets ([#58](https://github.com/hffgzktbcc-blip/ounce-hb/issues/58)), CI divergence PNG/summary artifacts ([#59](https://github.com/hffgzktbcc-blip/ounce-hb/issues/59)), VS Code `tasks.json` + `problemMatcher` ([#60](https://github.com/hffgzktbcc-blip/ounce-hb/issues/60)).
 
 An in-process `ounce-core` library backend is parked until the owner decides it is worth the work
 ([#8](https://github.com/hffgzktbcc-blip/ounce-hb/issues/8)); see [OUNCE_CORE_API_NEEDS.md](OUNCE_CORE_API_NEEDS.md).

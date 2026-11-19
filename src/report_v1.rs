@@ -305,6 +305,295 @@ impl ReproManifest {
     }
 }
 
+/// One step checkpoint inside an `ounce.trace.v1` summary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceStep {
+    pub index: u64,
+    pub pc: Option<String>,
+    pub opcode: Option<String>,
+    pub regs: Vec<(String, String)>,
+}
+
+/// Parsed `ounce.trace.v1` execution trace summary emitted via `OUNCE_TRACE_SUMMARY=<path>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceV1 {
+    pub schema: String,
+    pub engine: String,
+    pub tier: Option<String>,
+    pub insns_executed: Option<u64>,
+    pub stop_kind: Option<String>,
+    pub exit_code: Option<i32>,
+    pub final_pc: Option<String>,
+    pub final_sp: Option<String>,
+    pub final_lr: Option<String>,
+    pub final_x0: Option<String>,
+    pub final_nzcv: Option<String>,
+    pub steps: Vec<TraceStep>,
+}
+
+fn normalize_hex_or_int(val: &JsonValue, width: usize) -> Option<String> {
+    match val {
+        JsonValue::Number(JsonNumber::Int(n)) => {
+            let v = u64::try_from(*n).ok()?;
+            Some(format!("0x{v:0width$x}"))
+        }
+        JsonValue::String(s) => {
+            let trimmed = s.trim();
+            if let Some(hex) = trimmed
+                .strip_prefix("0x")
+                .or_else(|| trimmed.strip_prefix("0X"))
+                && let Ok(v) = u64::from_str_radix(hex, 16)
+            {
+                return Some(format!("0x{v:0width$x}"));
+            }
+            if let Ok(v) = trimmed.parse::<u64>() {
+                return Some(format!("0x{v:0width$x}"));
+            }
+            Some(trimmed.to_string())
+        }
+        _ => None,
+    }
+}
+
+impl TraceV1 {
+    /// Parse an `ounce.trace.v1` JSON summary. Returns `None` if invalid JSON or schema != `"ounce.trace.v1"`.
+    pub fn parse(json: &str) -> Option<Self> {
+        let root = parse_json(json)?;
+        let schema = root.field("schema")?.as_str()?.to_string();
+        if schema != "ounce.trace.v1" {
+            return None;
+        }
+        let engine = root
+            .field("engine")
+            .and_then(JsonValue::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+        let tier = root
+            .field("tier")
+            .and_then(JsonValue::as_str)
+            .map(str::to_string);
+        let insns_executed = root
+            .field("insns_executed")
+            .or_else(|| root.field("steps_executed"))
+            .and_then(JsonValue::as_u64);
+        let stop_kind = root
+            .field("stop_kind")
+            .and_then(JsonValue::as_str)
+            .map(str::to_string);
+        let exit_code = root.field("exit_code").and_then(JsonValue::as_i32);
+        let final_pc = root
+            .field("final_pc")
+            .or_else(|| root.field("pc"))
+            .and_then(|v| normalize_hex_or_int(v, 16));
+        let final_sp = root
+            .field("final_sp")
+            .or_else(|| root.field("sp"))
+            .and_then(|v| normalize_hex_or_int(v, 16));
+        let final_lr = root
+            .field("final_lr")
+            .or_else(|| root.field("lr"))
+            .and_then(|v| normalize_hex_or_int(v, 16));
+        let final_x0 = root
+            .field("final_x0")
+            .or_else(|| root.field("x0"))
+            .and_then(|v| normalize_hex_or_int(v, 16));
+        let final_nzcv = root
+            .field("final_nzcv")
+            .or_else(|| root.field("nzcv"))
+            .and_then(|v| normalize_hex_or_int(v, 8));
+
+        let mut steps = Vec::new();
+        if let Some(JsonValue::Array(items)) =
+            root.field("steps").or_else(|| root.field("checkpoints"))
+        {
+            for (idx, item) in items.iter().enumerate() {
+                let index = item
+                    .field("i")
+                    .or_else(|| item.field("step"))
+                    .or_else(|| item.field("insn"))
+                    .and_then(JsonValue::as_u64)
+                    .unwrap_or(idx as u64);
+                let pc = item.field("pc").and_then(|v| normalize_hex_or_int(v, 16));
+                let opcode = item
+                    .field("opcode")
+                    .and_then(|v| normalize_hex_or_int(v, 8));
+                let mut regs = Vec::new();
+                if let Some(entries) = item.field("regs").and_then(JsonValue::as_object) {
+                    for (k, v) in entries {
+                        let width = if k.eq_ignore_ascii_case("nzcv") {
+                            8
+                        } else {
+                            16
+                        };
+                        if let Some(norm) = normalize_hex_or_int(v, width) {
+                            regs.push((k.to_ascii_lowercase(), norm));
+                        }
+                    }
+                } else if let Some(entries) = item.as_object() {
+                    for (k, v) in entries {
+                        let lower = k.to_ascii_lowercase();
+                        if matches!(
+                            lower.as_str(),
+                            "i" | "step" | "insn" | "pc" | "opcode" | "regs"
+                        ) {
+                            continue;
+                        }
+                        let width = if lower == "nzcv" { 8 } else { 16 };
+                        if let Some(norm) = normalize_hex_or_int(v, width) {
+                            regs.push((lower, norm));
+                        }
+                    }
+                }
+                regs.sort_by(|a, b| a.0.cmp(&b.0));
+                regs.dedup_by(|a, b| a.0 == b.0);
+                steps.push(TraceStep {
+                    index,
+                    pc,
+                    opcode,
+                    regs,
+                });
+            }
+        }
+
+        Some(Self {
+            schema,
+            engine,
+            tier,
+            insns_executed,
+            stop_kind,
+            exit_code,
+            final_pc,
+            final_sp,
+            final_lr,
+            final_x0,
+            final_nzcv,
+            steps,
+        })
+    }
+
+    /// Fill optional top-level summary fields (`insns_executed`, `stop_kind`, `exit_code`, `final_pc`)
+    /// from the companion `ounce.run.v1` report when omitted by the trace file.
+    pub fn with_report_fallback(mut self, report: Option<&ReportV1>) -> Self {
+        if let Some(r) = report {
+            if self.insns_executed.is_none() {
+                self.insns_executed = Some(r.insns_executed);
+            }
+            if self.stop_kind.is_none() {
+                self.stop_kind = Some(r.stop_kind.clone());
+            }
+            if self.exit_code.is_none() {
+                self.exit_code = Some(r.exit_code);
+            }
+            if self.final_pc.is_none() {
+                self.final_pc = r.pc.map(|v| format!("0x{v:016x}"));
+            }
+            if self.tier.is_none() {
+                self.tier = Some(r.tier.clone());
+            }
+        }
+        self
+    }
+}
+
+/// Compare two `ounce.trace.v1` summaries and return `None` when they agree, or a readable
+/// description of the first differing step or summary field (`pc`, `opcode`, registers,
+/// `insns_executed`, `stop_kind`, `exit_code`, final registers).
+pub fn diff_traces(rt: &TraceV1, core: &TraceV1) -> Option<String> {
+    let min_steps = rt.steps.len().min(core.steps.len());
+    for idx in 0..min_steps {
+        let rs = &rt.steps[idx];
+        let cs = &core.steps[idx];
+        if rs.index != cs.index {
+            return Some(format!(
+                "step index mismatch at position {idx}: runtime step {} vs core step {}",
+                rs.index, cs.index
+            ));
+        }
+        let step_no = rs.index;
+        if let (Some(rp), Some(cp)) = (&rs.pc, &cs.pc)
+            && rp != cp
+        {
+            return Some(format!(
+                "step {step_no}: pc mismatch (runtime {rp} vs core {cp})"
+            ));
+        }
+        if let (Some(ro), Some(co)) = (&rs.opcode, &cs.opcode)
+            && ro != co
+        {
+            let pc = rs.pc.as_deref().unwrap_or("unknown");
+            return Some(format!(
+                "step {step_no} (pc={pc}): opcode mismatch (runtime {ro} vs core {co})"
+            ));
+        }
+        if !rs.regs.is_empty() && !cs.regs.is_empty() && rs.regs != cs.regs {
+            let pc = rs.pc.as_deref().unwrap_or("unknown");
+            for (rk, rv) in &rs.regs {
+                match cs.regs.iter().find(|(ck, _)| ck == rk) {
+                    Some((_, cv)) if cv != rv => {
+                        return Some(format!(
+                            "step {step_no} (pc={pc}): register {rk} mismatch (runtime {rv} vs core {cv})"
+                        ));
+                    }
+                    None => {
+                        return Some(format!(
+                            "step {step_no} (pc={pc}): register {rk} present in runtime ({rv}) but absent in core"
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            for (ck, cv) in &cs.regs {
+                if !rs.regs.iter().any(|(rk, _)| rk == ck) {
+                    return Some(format!(
+                        "step {step_no} (pc={pc}): register {ck} present in core ({cv}) but absent in runtime"
+                    ));
+                }
+            }
+        }
+    }
+
+    if let (Some(rk), Some(ck)) = (&rt.stop_kind, &core.stop_kind)
+        && rk != ck
+    {
+        return Some(format!(
+            "stop_kind mismatch (runtime {rk:?} vs core {ck:?})"
+        ));
+    }
+    if let (Some(rc), Some(cc)) = (rt.exit_code, core.exit_code)
+        && rc != cc
+    {
+        return Some(format!("exit_code mismatch (runtime {rc} vs core {cc})"));
+    }
+    if let (Some(ri), Some(ci)) = (rt.insns_executed, core.insns_executed)
+        && ri != ci
+    {
+        return Some(format!(
+            "insns_executed mismatch (runtime {ri} vs core {ci})"
+        ));
+    }
+    for (name, rv, cv) in [
+        ("final_pc", &rt.final_pc, &core.final_pc),
+        ("final_sp", &rt.final_sp, &core.final_sp),
+        ("final_lr", &rt.final_lr, &core.final_lr),
+        ("final_x0", &rt.final_x0, &core.final_x0),
+        ("final_nzcv", &rt.final_nzcv, &core.final_nzcv),
+    ] {
+        if let (Some(r), Some(c)) = (rv, cv)
+            && r != c
+        {
+            return Some(format!("{name} mismatch (runtime {r} vs core {c})"));
+        }
+    }
+    if !rt.steps.is_empty() && !core.steps.is_empty() && rt.steps.len() != core.steps.len() {
+        return Some(format!(
+            "recorded step count mismatch (runtime {} vs core {})",
+            rt.steps.len(),
+            core.steps.len()
+        ));
+    }
+    None
+}
+
 pub fn escape_json(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
@@ -1159,6 +1448,65 @@ mod tests {
             let _ = parse_json(&doc);
             let _ = ReportV1::parse(&doc);
             let _ = ReproManifest::parse(&doc);
+            let _ = TraceV1::parse(&doc);
         }
+    }
+
+    #[test]
+    fn trace_v1_parses_and_diffs_steps_registers_and_summary_fields() {
+        let base_core = r#"{
+  "schema": "ounce.trace.v1",
+  "engine": "ounce-core",
+  "steps_executed": 100,
+  "stop_kind": "clean_exit",
+  "exit_code": 0,
+  "final_pc": "0x0000000080000090",
+  "final_x0": 0,
+  "steps": [
+    {"i": 0, "pc": "0x0000000080000000", "opcode": "0x14000020", "regs": {}},
+    {"i": 1, "pc": "0x0000000080000080", "opcode": "0x52800000", "regs": {"x0": "0x000000000000002a", "nzcv": "0x20000000"}}
+  ]
+}"#;
+        let base_rt = r#"{
+  "schema": "ounce.trace.v1",
+  "engine": "ounce-runtime",
+  "insns_executed": 100,
+  "stop_kind": "clean_exit",
+  "exit_code": 0,
+  "final_pc": 2147483792,
+  "final_x0": "0x0",
+  "steps": [
+    {"i": 0, "pc": 2147483648, "opcode": "0x14000020", "regs": {}},
+    {"i": 1, "pc": "0x80000080", "opcode": "0x52800000", "regs": {"nzcv": "0x20000000", "x0": 42}}
+  ]
+}"#;
+        let core = TraceV1::parse(base_core).unwrap();
+        let rt = TraceV1::parse(base_rt).unwrap();
+        assert_eq!(diff_traces(&rt, &core), None);
+
+        // Step PC divergence
+        let rt_bad_pc =
+            TraceV1::parse(&base_rt.replace("\"0x80000080\"", "\"0x80000084\"")).unwrap();
+        let diff = diff_traces(&rt_bad_pc, &core).unwrap();
+        assert!(diff.contains("step 1: pc mismatch"), "{diff}");
+
+        // Step register divergence
+        let rt_bad_reg = TraceV1::parse(&base_rt.replace("42", "99")).unwrap();
+        let diff = diff_traces(&rt_bad_reg, &core).unwrap();
+        assert!(diff.contains("step 1"), "{diff}");
+        assert!(diff.contains("register x0 mismatch"), "{diff}");
+
+        // insns_executed divergence
+        let rt_bad_insns =
+            TraceV1::parse(&base_rt.replace("\"insns_executed\": 100", "\"insns_executed\": 105"))
+                .unwrap();
+        let diff = diff_traces(&rt_bad_insns, &core).unwrap();
+        assert!(diff.contains("insns_executed mismatch"), "{diff}");
+
+        // stop_kind divergence
+        let rt_bad_stop =
+            TraceV1::parse(&base_rt.replace("\"clean_exit\"", "\"cpu_error\"")).unwrap();
+        let diff = diff_traces(&rt_bad_stop, &core).unwrap();
+        assert!(diff.contains("stop_kind mismatch"), "{diff}");
     }
 }

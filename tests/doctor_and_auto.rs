@@ -568,3 +568,161 @@ fi"#,
         "expected {bad_sha} as first bad commit:\n{stdout}"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn diff_trace_compares_ounce_trace_v1_summaries_and_reports_first_divergence() {
+    let ws = TempWorkspace::new("diff-trace");
+    let matching_trace = r#"{"schema":"ounce.trace.v1","engine":"engine","steps_executed":2,"stop_kind":"clean_exit","exit_code":0,"steps":[{"i":0,"pc":"0x0000000080000000","opcode":"0x14000020","regs":{}},{"i":1,"pc":"0x0000000080000080","opcode":"0x52800000","regs":{"x0":"0x0000000000000000"}}]}"#;
+    let diverging_trace = r#"{"schema":"ounce.trace.v1","engine":"ounce-runtime","insns_executed":2,"stop_kind":"clean_exit","exit_code":0,"steps":[{"i":0,"pc":"0x0000000080000000","opcode":"0x14000020","regs":{}},{"i":1,"pc":"0x0000000080000080","opcode":"0x52800000","regs":{"x0":"0x0000000000000099"}}]}"#;
+
+    let core = ws.write_script(
+        "core-trace",
+        &format!(
+            r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{{"schema":"ounce.run.v1","engine":"ounce-core","engine_version":"0.10.0","tier":"interpreter","silent_fallback":false,"stop_kind":"clean_exit","exit_code":0,"insns_executed":2,"frames_presented":0,"framebuffer_hash":null,"message":null}}
+EOF
+cat > "$OUNCE_TRACE_SUMMARY" <<'EOF'
+{matching_trace}
+EOF
+exit 0"#
+        ),
+    );
+    let rt_match = ws.write_script(
+        "rt-match",
+        &format!(
+            r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{{"schema":"ounce.run.v1","engine":"ounce-runtime","engine_version":"0.6.0","tier":"tier4","silent_fallback":false,"stop_kind":"clean_exit","exit_code":0,"insns_executed":2,"frames_presented":0,"framebuffer_hash":null,"message":null}}
+EOF
+cat > "$OUNCE_TRACE_SUMMARY" <<'EOF'
+{matching_trace}
+EOF
+exit 0"#
+        ),
+    );
+    let rt_diverge = ws.write_script(
+        "rt-diverge",
+        &format!(
+            r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{{"schema":"ounce.run.v1","engine":"ounce-runtime","engine_version":"0.6.0","tier":"tier4","silent_fallback":false,"stop_kind":"clean_exit","exit_code":0,"insns_executed":2,"frames_presented":1,"framebuffer_hash":"fnv1a64:1111111111111111","message":null}}
+EOF
+cat > "$OUNCE_TRACE_SUMMARY" <<'EOF'
+{diverging_trace}
+EOF
+exit 0"#
+        ),
+    );
+
+    // Matching traces -> exit 0
+    let ok = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .current_dir(&ws.0)
+        .args(["diff-trace", "--cpu", "tier4", "app.nro"])
+        .env("OUNCE_CORE_BIN", &core)
+        .env("OUNCE_RUNTIME_BIN", &rt_match)
+        .output()
+        .unwrap();
+    assert_eq!(
+        ok.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&ok.stdout).contains("traces agree"),
+        "{}",
+        String::from_utf8_lossy(&ok.stdout)
+    );
+
+    // Diverging register at step 1 -> exit 1 + $GITHUB_STEP_SUMMARY written
+    let summary_path = ws.0.join("step_summary.md");
+    let bad = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .current_dir(&ws.0)
+        .args(["diff-trace", "app.nro"])
+        .env("OUNCE_CORE_BIN", &core)
+        .env("OUNCE_RUNTIME_BIN", &rt_diverge)
+        .env("GITHUB_STEP_SUMMARY", &summary_path)
+        .output()
+        .unwrap();
+    assert_eq!(bad.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&bad.stderr);
+    assert!(stderr.contains("trace divergence"), "{stderr}");
+    assert!(stderr.contains("step 1"), "{stderr}");
+    assert!(stderr.contains("register x0 mismatch"), "{stderr}");
+
+    let summary = fs::read_to_string(&summary_path).expect("step summary written");
+    for col in [
+        "Program",
+        "Stop Kind",
+        "Exit Code",
+        "Instructions",
+        "Frames",
+        "Framebuffer Hash",
+        "stop_kind",
+        "insns_executed",
+        "frames_presented",
+        "framebuffer_hash",
+        "register x0 mismatch",
+    ] {
+        assert!(summary.contains(col), "missing {col:?} in:\n{summary}");
+    }
+
+    // Missing engine -> exit 3
+    let missing = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .current_dir(&ws.0)
+        .args(["diff-trace", "app.nro"])
+        .env("OUNCE_CORE_BIN", &core)
+        .env("OUNCE_RUNTIME_BIN", ws.0.join("no-such-rt"))
+        .output()
+        .unwrap();
+    assert_eq!(missing.status.code(), Some(3));
+}
+
+#[cfg(unix)]
+#[test]
+fn github_step_summary_records_table_on_auto_divergence_and_repro_failure() {
+    let ws = TempWorkspace::new("step-summary");
+    let summary_path = ws.0.join("summary.md");
+    let rt = ws.write_script(
+        "rt",
+        r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{"schema":"ounce.run.v1","engine":"ounce-runtime","engine_version":"0.6.0","tier":"tier4","silent_fallback":false,"stop_kind":"frame_limit","exit_code":0,"insns_executed":250,"frames_presented":5,"framebuffer_hash":"fnv1a64:aaaaaaaaaaaaaaaa","message":null}
+EOF
+exit 0"#,
+    );
+    let core = ws.write_script(
+        "core",
+        r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{"schema":"ounce.run.v1","engine":"ounce-core","engine_version":"0.10.0","tier":"interpreter","silent_fallback":false,"stop_kind":"frame_limit","exit_code":0,"insns_executed":250,"frames_presented":5,"framebuffer_hash":"fnv1a64:bbbbbbbbbbbbbbbb","message":null}
+EOF
+exit 0"#,
+    );
+
+    let auto_out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .current_dir(&ws.0)
+        .args(["run", "--auto", "app.nro"])
+        .env("OUNCE_CORE_BIN", &core)
+        .env("OUNCE_RUNTIME_BIN", &rt)
+        .env("GITHUB_STEP_SUMMARY", &summary_path)
+        .output()
+        .unwrap();
+    assert_eq!(auto_out.status.code(), Some(0));
+
+    // Replaying the written ounce-repro.json against `rt` fails and appends a second table.
+    let repro_out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .current_dir(&ws.0)
+        .args(["repro", "--backend", "runtime", "ounce-repro.json"])
+        .env("OUNCE_RUNTIME_BIN", &rt)
+        .env("GITHUB_STEP_SUMMARY", &summary_path)
+        .output()
+        .unwrap();
+    assert_eq!(repro_out.status.code(), Some(1));
+
+    let summary = fs::read_to_string(&summary_path).expect("summary file written");
+    assert!(
+        summary.contains("ounce-hb run --auto divergence"),
+        "{summary}"
+    );
+    assert!(summary.contains("ounce-hb repro failure"), "{summary}");
+    assert!(summary.contains("fnv1a64:aaaaaaaaaaaaaaaa"), "{summary}");
+    assert!(summary.contains("fnv1a64:bbbbbbbbbbbbbbbb"), "{summary}");
+}

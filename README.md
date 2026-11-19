@@ -98,6 +98,9 @@ cargo run -- repro ounce-repro.json
 # Drive git bisect run against an ounce.repro.v1 bundle (maps exits 2..=5 to 125)
 git bisect run ounce-hb bisect ounce-repro.json
 
+# Compare ounce.trace.v1 execution traces between ounce-runtime and ounce-core
+cargo run -- diff-trace --cpu tier4 path/to/app.nro
+
 # Assert golden stdout or pre-HUD framebuffer_hash directly in CI or Makefiles
 cargo run -- run --expect-stdout "PASS" --expect-hash fnv1a64:3a00ccf6b6f28ea1 path/to/app.nro
 ```

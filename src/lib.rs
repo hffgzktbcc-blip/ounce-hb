@@ -84,6 +84,47 @@ pub fn classify(bytes: &[u8]) -> Result<Kind, Rejection> {
     Err(Rejection::Unrecognized)
 }
 
+/// Checks whether a validated NRO image carries a trailing `ASET` asset section with a non-zero
+/// embedded RomFS section size (`u32::from_le_bytes(bytes[0x18..0x1C])` points to `ASET`, with
+/// a non-zero RomFS section size at `+0x18..+0x20` or standard `NroAssetHeader` `+0x30..+0x38`).
+pub fn has_embedded_romfs(bytes: &[u8]) -> bool {
+    if bytes.len() < 0x1C || classify(bytes) != Ok(Kind::Nro) {
+        return false;
+    }
+    let nro_size =
+        u32::from_le_bytes([bytes[0x18], bytes[0x19], bytes[0x1A], bytes[0x1B]]) as usize;
+    if nro_size < 0x80 {
+        return false;
+    }
+    let Some(aset) = bytes.get(nro_size..) else {
+        return false;
+    };
+    if aset.len() < 0x20 || &aset[0..4] != b"ASET" {
+        return false;
+    }
+    let size_at_18 = u64::from_le_bytes([
+        aset[0x18], aset[0x19], aset[0x1A], aset[0x1B], aset[0x1C], aset[0x1D], aset[0x1E],
+        aset[0x1F],
+    ]);
+    if aset.len() >= 0x38 {
+        let nacp_size_at_20 = u64::from_le_bytes([
+            aset[0x20], aset[0x21], aset[0x22], aset[0x23], aset[0x24], aset[0x25], aset[0x26],
+            aset[0x27],
+        ]);
+        let romfs_size_at_30 = u64::from_le_bytes([
+            aset[0x30], aset[0x31], aset[0x32], aset[0x33], aset[0x34], aset[0x35], aset[0x36],
+            aset[0x37],
+        ]);
+        if romfs_size_at_30 != 0 {
+            return true;
+        }
+        if nacp_size_at_20 != 0 {
+            return false;
+        }
+    }
+    size_at_18 != 0
+}
+
 /// Why a validated image could not be run. The `Display` text is shown to the user verbatim.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunError {
@@ -276,6 +317,34 @@ pub fn run_engine_opts(
     run_with(&backend, kind, bytes, args)
 }
 
+/// [`run_engine_opts`] with `OUNCE_TRACE_SUMMARY` enabled to capture `ounce.trace.v1` output.
+pub fn run_engine_trace_opts(
+    engine: &Engine,
+    kind: Kind,
+    bytes: &[u8],
+    args: &[String],
+    limit: Option<Duration>,
+    cpu: Option<CpuTier>,
+    sdmc: Option<&std::path::Path>,
+) -> Result<RunOutput, RunError> {
+    if kind != Kind::Nro {
+        return Err(RunError::UnsupportedKind(kind));
+    }
+    check_guest_args(args)?;
+    if let Some(dir) = sdmc {
+        validate_sdmc_dir(dir)?;
+    }
+    let timeout = match limit {
+        Some(l) => l,
+        None => timeout_from_env()?,
+    };
+    let backend = Subprocess::new(engine.locate()?, timeout)
+        .with_cpu(cpu)
+        .with_sdmc(sdmc.map(std::path::Path::to_path_buf))
+        .with_trace_summary(true);
+    run_with(&backend, kind, bytes, args)
+}
+
 /// Run a validated image with any [`Backend`]. The bytes are copied to a private file first, so the
 /// program that runs is the one that was classified.
 pub fn run_with<B: Backend>(
@@ -378,5 +447,39 @@ mod tests {
             run_with(&Echo, Kind::Nso, &bytes, &[]),
             Err(RunError::UnsupportedKind(Kind::Nso))
         );
+    }
+
+    #[test]
+    fn detects_embedded_romfs_in_nro_aset_section() {
+        let mut plain = with(0x10, b"NRO0", 0x80);
+        plain[0x18..0x1C].copy_from_slice(&(0x80u32).to_le_bytes());
+        assert!(!has_embedded_romfs(&plain));
+
+        // ASET header at offset 0x80 with non-zero RomFS section size at +0x18..+0x20.
+        let mut with_romfs_18 = plain.clone();
+        with_romfs_18.extend_from_slice(&[0u8; 0x20]);
+        with_romfs_18[0x80..0x84].copy_from_slice(b"ASET");
+        with_romfs_18[0x80 + 0x18..0x80 + 0x20].copy_from_slice(&1024u64.to_le_bytes());
+        assert!(has_embedded_romfs(&with_romfs_18));
+
+        // Full 0x38-byte ASET header with non-zero RomFS size at +0x30..+0x38.
+        let mut with_romfs_30 = plain.clone();
+        with_romfs_30.extend_from_slice(&[0u8; 0x38]);
+        with_romfs_30[0x80..0x84].copy_from_slice(b"ASET");
+        with_romfs_30[0x80 + 0x28..0x80 + 0x30].copy_from_slice(&0x38u64.to_le_bytes());
+        with_romfs_30[0x80 + 0x30..0x80 + 0x38].copy_from_slice(&512u64.to_le_bytes());
+        assert!(has_embedded_romfs(&with_romfs_30));
+
+        // ASET header with zero RomFS size returns false.
+        let mut zero_romfs = plain.clone();
+        zero_romfs.extend_from_slice(&[0u8; 0x38]);
+        zero_romfs[0x80..0x84].copy_from_slice(b"ASET");
+        assert!(!has_embedded_romfs(&zero_romfs));
+
+        // Non-NRO or bad magic at nro_size returns false.
+        assert!(!has_embedded_romfs(&with(0, b"NSO0", 0x100)));
+        let mut bad_aset = with_romfs_18.clone();
+        bad_aset[0x80..0x84].copy_from_slice(b"NOPE");
+        assert!(!has_embedded_romfs(&bad_aset));
     }
 }

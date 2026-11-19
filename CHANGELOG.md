@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ounce-hb run --timeout <secs>`: per-run wall-clock limit (overrides `OUNCE_HB_TIMEOUT_SECS`); exceeding it exits 4.
 - `ounce-hb run --expect-hash <hash>` and `--expect-stdout <substring>`: assert golden framebuffer hashes or stdout substrings directly on `run` (exiting `1` on mismatch).
 - `ounce-hb bisect`: `git bisect run` wrapper around `repro` mapping pass/fail to `0`/`1` and infrastructure/refusal exits (`2`–`5`) to `125`.
+- `ounce-hb diff-trace`: compares `ounce.trace.v1` (`OUNCE_TRACE_SUMMARY`) summaries between `ounce-runtime` and `ounce-core`, reporting either agreement (`0`) or the first differing step/field (`1`).
+- CI divergence summaries: when `GITHUB_STEP_SUMMARY` is set, `run --auto`, `repro`, and `diff-trace` append a Markdown table (`Program`, `Stop Kind`, `Exit Code`, `Instructions`, `Frames`, `Framebuffer Hash`) on divergence or failure.
+- `ounce_hb::has_embedded_romfs`: detects a trailing `ASET` asset section with a non-zero embedded RomFS section in NRO images; documented missing-RomFS `svcBreak` stops in `docs/DIAGNOSIS.md` and `docs/LIMITS.md`.
 - `docs/INTEGRATION.md`: copy-paste integration snippets for `cargo-nx`, `devkitA64` Makefiles, GitHub Actions (`setup-ounce`), and VS Code `tasks.json` + `problemMatcher` crash navigation.
 - `ounce-hb run --json`: prints one `ounce.hb.run.v1` object on stdout (exit code, stop label, guest exit code, captured output). Not supported with `--auto` yet.
 - `ounce-hb doctor` (text and `--json`) now reports `DEVKITPRO`, `devkitA64` and `cargo-nx`. They are only needed to build homebrew, so they do not change doctor's exit code.

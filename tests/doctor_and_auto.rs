@@ -182,3 +182,138 @@ exit 0"#,
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("1 passed, 0 failed"), "{stdout}");
 }
+
+#[cfg(unix)]
+#[test]
+fn auto_detects_framebuffer_hash_divergence_on_clean_exit_and_writes_repro() {
+    let ws = TempWorkspace::new("auto-hash-clean-diverge");
+    let rt = ws.write_script(
+        "rt",
+        r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{"schema":"ounce.run.v1","engine":"ounce-runtime","engine_version":"0.6.0","tier":"tier4","silent_fallback":false,"stop_kind":"frame_limit","exit_code":0,"pc":null,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":null,"insns_executed":100,"frames_presented":5,"framebuffer_hash":"fnv1a64:1111111111111111","message":null}
+EOF
+exit 0"#,
+    );
+    let core = ws.write_script(
+        "core",
+        r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{"schema":"ounce.run.v1","engine":"ounce-core","engine_version":"0.9.1","tier":"interpreter","silent_fallback":false,"stop_kind":"frame_limit","exit_code":0,"pc":null,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":null,"insns_executed":100,"frames_presented":5,"framebuffer_hash":"fnv1a64:2222222222222222","message":null}
+EOF
+exit 0"#,
+    );
+
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .current_dir(&ws.0)
+        .args(["run", "--auto", "app.nro"])
+        .env("OUNCE_CORE_BIN", &core)
+        .env("OUNCE_RUNTIME_BIN", &rt)
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("attribution = Runtime Divergence"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("fnv1a64:1111111111111111"), "{stderr}");
+    assert!(stderr.contains("fnv1a64:2222222222222222"), "{stderr}");
+    let repro = fs::read_to_string(ws.0.join("ounce-repro.json")).expect("repro.json written");
+    assert!(repro.contains("\"schema\": \"ounce.repro.v1\""), "{repro}");
+    assert!(
+        repro.contains("\"framebuffer_hash\": \"fnv1a64:1111111111111111\""),
+        "{repro}"
+    );
+    assert!(
+        repro.contains("\"framebuffer_hash\": \"fnv1a64:2222222222222222\""),
+        "{repro}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn auto_reports_runtime_divergence_instead_of_guest_bug_when_hashes_differ() {
+    let ws = TempWorkspace::new("auto-hash-fault-diverge");
+    let rt = ws.write_script(
+        "rt",
+        r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{"schema":"ounce.run.v1","engine":"ounce-runtime","engine_version":"0.6.0","tier":"tier4","silent_fallback":false,"stop_kind":"svc_break","exit_code":13,"pc":2147483660,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":305419896,"insns_executed":40,"frames_presented":2,"framebuffer_hash":"fnv1a64:aaaaaaaaaaaaaaaa","message":null}
+EOF
+exit 1"#,
+    );
+    let core = ws.write_script(
+        "core",
+        r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{"schema":"ounce.run.v1","engine":"ounce-core","engine_version":"0.9.1","tier":"interpreter","silent_fallback":false,"stop_kind":"svc_break","exit_code":13,"pc":2147483660,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":305419896,"insns_executed":40,"frames_presented":2,"framebuffer_hash":"fnv1a64:bbbbbbbbbbbbbbbb","message":null}
+EOF
+exit 1"#,
+    );
+
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .current_dir(&ws.0)
+        .args(["run", "--auto", "app.nro"])
+        .env("OUNCE_CORE_BIN", &core)
+        .env("OUNCE_RUNTIME_BIN", &rt)
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(13));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("attribution = Runtime Divergence"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("attribution = Guest Bug"), "{stderr}");
+    let repro = fs::read_to_string(ws.0.join("ounce-repro.json")).expect("repro.json written");
+    assert!(
+        repro.contains("\"framebuffer_hash\": \"fnv1a64:aaaaaaaaaaaaaaaa\""),
+        "{repro}"
+    );
+    assert!(
+        repro.contains("\"framebuffer_hash\": \"fnv1a64:bbbbbbbbbbbbbbbb\""),
+        "{repro}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn auto_does_not_write_repro_when_framebuffer_hashes_match_or_one_is_null() {
+    for (tag, core_hash) in [("match", "\"fnv1a64:1111111111111111\""), ("null", "null")] {
+        let ws = TempWorkspace::new(&format!("auto-hash-{tag}"));
+        let rt = ws.write_script(
+            "rt",
+            r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{"schema":"ounce.run.v1","engine":"ounce-runtime","engine_version":"0.6.0","tier":"tier4","silent_fallback":false,"stop_kind":"frame_limit","exit_code":0,"pc":null,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":null,"insns_executed":100,"frames_presented":5,"framebuffer_hash":"fnv1a64:1111111111111111","message":null}
+EOF
+exit 0"#,
+        );
+        let core = ws.write_script(
+            "core",
+            &format!(
+                r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{{"schema":"ounce.run.v1","engine":"ounce-core","engine_version":"0.9.1","tier":"interpreter","silent_fallback":false,"stop_kind":"frame_limit","exit_code":0,"pc":null,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":null,"insns_executed":100,"frames_presented":5,"framebuffer_hash":{core_hash},"message":null}}
+EOF
+exit 0"#
+            ),
+        );
+
+        let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+            .current_dir(&ws.0)
+            .args(["run", "--auto", "app.nro"])
+            .env("OUNCE_CORE_BIN", &core)
+            .env("OUNCE_RUNTIME_BIN", &rt)
+            .output()
+            .unwrap();
+
+        assert_eq!(out.status.code(), Some(0));
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !stderr.contains("Runtime Divergence") && !stderr.contains("Guest Bug"),
+            "{tag}: {stderr}"
+        );
+        assert!(
+            !ws.0.join("ounce-repro.json").exists(),
+            "{tag}: unexpected ounce-repro.json"
+        );
+    }
+}

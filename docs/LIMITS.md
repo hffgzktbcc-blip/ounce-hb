@@ -1,6 +1,6 @@
 # Limits & Current Capabilities
 
-> **Version scope (17 November 2026):** This page's M0 and Core v0.8.x notes describe the original milestone, **not** the complete feature set of the now-published [HB v0.1.0](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.1.0). For newer CLI `doctor`, `repro` and `--auto` features consult [README](../README.md) and [CHANGELOG](../CHANGELOG.md). Changes in the changelog's *Unreleased* section (including newer `run --timeout` and `run --json` options) must not be assumed to exist in the v0.1.0 archive. Existing safety limits and unimplemented features below remain conservatively stated until each is retested.
+> **Version scope (19 November 2026):** This page's M0 and Core v0.8.x notes describe the original milestone, **not** the complete feature set of the now-published [HB v0.1.0](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.1.0). For newer CLI `doctor`, `repro` and `--auto` features consult [README](../README.md) and [CHANGELOG](../CHANGELOG.md). Changes in the changelog's *Unreleased* section (including newer `run --timeout`, `run --json`, `--cpu`, and `--sdmc` options) must not be assumed to exist in the v0.1.0 archive. Existing safety limits and unimplemented features below remain conservatively stated until each is retested.
 
 This document provides an honest, comprehensive account of what ounce-hb can do today, what it
 cannot yet do, and what it will never do.
@@ -18,9 +18,9 @@ The following will never be supported by ounce-hb:
 
 ---
 
-## 2. Current M0 Capabilities
+## 2. Current Capabilities
 
-As of Milestone M0:
+Current runner capabilities (see the version-scope note above for what is published in `v0.1.0` vs unreleased on `main`):
 - **Format Classification**:
   - Classifies unencrypted homebrew `NRO0` executables (offset `0x10`).
   - Classifies unencrypted homebrew `NSO0` modules (offset `0x00`).
@@ -28,6 +28,7 @@ As of Milestone M0:
 - **Subprocess Runner**:
   - Executes validated NRO files via an external `ounce-core` binary invoked in headless mode (`--present=headless`).
   - Resolves `ounce-core` via the `OUNCE_CORE_BIN` environment variable or the host system's `PATH`.
+  - Passes through `--cpu <interp|tier3|tier4>` (`--cpu=<interpreter|tier3|tier4>`) and validated `--sdmc <dir>` (`--sdmc=<dir>`, mounting `sdmc:/`) on `run` and `repro`, recording both in `ounce.repro.v1` bundles (unreleased on `main`, post-`v0.1.0`).
   - Captures guest stdout and stderr and prints them when ounce-core exits; the exit status is mapped to the documented ounce-hb exit codes, not forwarded.
   - Enforces a 60-second wall-clock timeout on guest runs. `OUNCE_HB_TIMEOUT_SECS` overrides it (greater than 0, at most 86400); see [DIAGNOSIS.md](DIAGNOSIS.md#timeout).
   - Refuses guest arguments starting with `-` to avoid silent argument dropping by upstream `ounce-core`.

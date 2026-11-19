@@ -62,10 +62,13 @@ engine is found, exit 3 when neither is. This does not check `DEVKITPRO`,
 ```
 
 `--auto` or `--backend auto` runs `ounce-runtime` when that binary exists, and
-otherwise runs `ounce-core`. If the runtime report has `silent_fallback` or
-the diagnosed exit is 10 through 15, ounce-hb runs ounce-core as well. The
-same diagnosis is a guest bug. A different diagnosis is a runtime divergence,
-and ounce-hb writes `ounce-repro.json` (`ounce.repro.v1`).
+otherwise runs `ounce-core`. If the runtime report has `silent_fallback`, the
+diagnosed exit is 10 through 15, or the runtime report emits a non-null
+`framebuffer_hash` (with `ounce-core` available), ounce-hb runs `ounce-core` as
+well. If both engines report non-null `framebuffer_hash` values that differ, or
+if their stop categories differ, that is a runtime divergence and ounce-hb
+writes `ounce-repro.json` (`ounce.repro.v1`). Otherwise, identical abnormal stops
+are attributed to a guest bug.
 
 The two engines do not yet label every fault with the same `stop_kind`. Read
 the bundle before treating a divergence line as an engine bug.
@@ -86,7 +89,7 @@ and `exit_code`. Exit 0 if all match, 1 if any do not, 2 if the input is
 missing or not a valid manifest. When the manifest's `core` section records
 `framebuffer_hash` and/or `frames_presented` (ounce-core builds after v0.9.0 write them for runs that
 present frames; v0.9.0 itself does not), those must match too; a missing actual hash counts as a mismatch. Manifests
-without them are checked as before. `run --auto` does not compare hashes yet.
+without them are checked as before. `run --auto` also compares non-null `framebuffer_hash` values when both engines emit them.
 
 ## GitHub Action
 

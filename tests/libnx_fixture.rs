@@ -57,3 +57,45 @@ fn libnx_fixture_exits_zero_and_echoes_arguments() {
         }
     }
 }
+
+#[test]
+fn libnx_fixture_runs_across_all_three_cpu_engines() {
+    let Ok(core) = ounce_hb::locate_core() else {
+        eprintln!("SKIPPED multi-engine libnx execution: no ounce-core binary found");
+        return;
+    };
+    let sdmc_dir = std::env::temp_dir().join(format!("ounce-hb-libnx-sdmc-{}", std::process::id()));
+    std::fs::create_dir_all(&sdmc_dir).unwrap();
+
+    for tier in ["interp", "tier3", "tier4"] {
+        let output = runner()
+            .env("OUNCE_CORE_BIN", &core)
+            .env("OUNCE_HB_TIMEOUT_SECS", "30")
+            .args([
+                "--cpu",
+                tier,
+                "--sdmc",
+                sdmc_dir.to_str().unwrap(),
+                "--json",
+            ])
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "tier={tier}\n{stdout}\n{stderr}"
+        );
+        assert!(
+            stdout.contains("\"stop\": \"clean_exit\""),
+            "tier={tier}\n{stdout}"
+        );
+        assert!(
+            stdout.contains("Hello from ounce-hb!\\n"),
+            "tier={tier}\n{stdout}"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&sdmc_dir);
+}

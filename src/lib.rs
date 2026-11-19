@@ -14,9 +14,9 @@ pub mod diagnose;
 pub mod report_v1;
 
 pub use backend::{
-    BACKEND_ENV, Backend, CORE_BIN_ENV, DEFAULT_TIMEOUT, Engine, HEAD_BYTES, MAX_CAPTURED_BYTES,
-    PIPE_CLOSE_GRACE, RUNTIME_BIN_ENV, RunOutput, Staged, Subprocess, TAIL_BYTES, find_core,
-    find_runtime, locate_core, truncation_marker,
+    BACKEND_ENV, Backend, CORE_BIN_ENV, CpuTier, DEFAULT_TIMEOUT, Engine, HEAD_BYTES,
+    MAX_CAPTURED_BYTES, PIPE_CLOSE_GRACE, RUNTIME_BIN_ENV, RunOutput, Staged, Subprocess,
+    TAIL_BYTES, find_core, find_runtime, locate_core, truncation_marker, validate_sdmc_dir,
 };
 
 /// What a file turned out to be.
@@ -98,6 +98,10 @@ pub enum RunError {
     UnsupportedKind(Kind),
     /// `OUNCE_HB_TIMEOUT_SECS` is set to something other than a usable number of seconds.
     BadTimeout(String),
+    /// `--cpu` was given an unsupported engine tier name.
+    BadCpu(String),
+    /// `--sdmc` pointed at a missing path or non-directory.
+    BadSdmc(String),
     /// The guest arguments together are longer than [`MAX_GUEST_ARGS_BYTES`]. `bytes` is the
     /// measured total, counted as [`guest_args_len`] does.
     GuestArgsTooLong {
@@ -151,7 +155,9 @@ impl fmt::Display for RunError {
                     "{k:?} execution is not supported yet; only NRO is supported."
                 )
             }
-            RunError::BadTimeout(why) => write!(f, "{why}"),
+            RunError::BadTimeout(why) | RunError::BadCpu(why) | RunError::BadSdmc(why) => {
+                write!(f, "{why}")
+            }
             RunError::GuestArgsTooLong { bytes } => write!(
                 f,
                 "the guest arguments are {bytes} bytes together, above the {MAX_GUEST_ARGS_BYTES}-byte limit. \
@@ -164,6 +170,15 @@ impl fmt::Display for RunError {
 }
 
 impl std::error::Error for RunError {}
+
+/// Parses a `--cpu` tier override (`interp`, `interpreter`, `tier3`, or `tier4`).
+pub fn parse_cpu(value: &str) -> Result<CpuTier, RunError> {
+    CpuTier::parse(value).ok_or_else(|| {
+        RunError::BadCpu(format!(
+            "--cpu must be interp, tier3, or tier4, got {value:?}."
+        ))
+    })
+}
 
 /// Environment variable that overrides the wall-clock limit, in seconds. Unset means
 /// [`DEFAULT_TIMEOUT`]. A value that is not a number greater than 0 and at most [`MAX_TIMEOUT_SECS`]
@@ -231,15 +246,33 @@ pub fn run_engine_timeout(
     args: &[String],
     limit: Option<Duration>,
 ) -> Result<RunOutput, RunError> {
+    run_engine_opts(engine, kind, bytes, args, limit, None, None)
+}
+
+/// [`run_engine_timeout`] with optional `--cpu` tier and `--sdmc` directory overrides.
+pub fn run_engine_opts(
+    engine: &Engine,
+    kind: Kind,
+    bytes: &[u8],
+    args: &[String],
+    limit: Option<Duration>,
+    cpu: Option<CpuTier>,
+    sdmc: Option<&std::path::Path>,
+) -> Result<RunOutput, RunError> {
     if kind != Kind::Nro {
         return Err(RunError::UnsupportedKind(kind));
     }
     check_guest_args(args)?;
+    if let Some(dir) = sdmc {
+        validate_sdmc_dir(dir)?;
+    }
     let timeout = match limit {
         Some(l) => l,
         None => timeout_from_env()?,
     };
-    let backend = Subprocess::new(engine.locate()?, timeout);
+    let backend = Subprocess::new(engine.locate()?, timeout)
+        .with_cpu(cpu)
+        .with_sdmc(sdmc.map(std::path::Path::to_path_buf));
     run_with(&backend, kind, bytes, args)
 }
 

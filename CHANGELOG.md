@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `ounce-hb run` and `ounce-hb repro` accept `--cpu <interp|tier3|tier4>` and `--sdmc <dir>`, forwarding `--cpu=<interpreter|tier3|tier4>` and `--sdmc=<dir>` to the backend and recording `cpu` and `sdmc` in `ounce.repro.v1` bundles.
 - `ounce.run.v1` reports are parsed for the new `frames_presented` and `framebuffer_hash` fields (from ounce-core after its #460; engines that omit them read as 0 / none). `ounce.repro.v1` bundles now record both per engine, and `ounce-hb repro` fails when the manifest's `core.framebuffer_hash` or `core.frames_presented` differs from the run (checked only when the manifest has them). `run --auto` does not compare hashes yet, and ounce-runtime does not emit them yet.
 - `ounce-hb run --timeout <secs>`: per-run wall-clock limit (overrides `OUNCE_HB_TIMEOUT_SECS`); exceeding it exits 4.
 - `ounce-hb run --json`: prints one `ounce.hb.run.v1` object on stdout (exit code, stop label, guest exit code, captured output). Not supported with `--auto` yet.

@@ -211,3 +211,145 @@ fn doctor_text_names_each_missing_tool_with_a_fix() {
         assert!(stdout.contains(needle), "missing {needle:?} in {stdout}");
     }
 }
+
+#[test]
+fn sdmc_missing_or_file_fails_with_exit_2_and_plain_message() {
+    let ws = TempWorkspace::new("sdmc-bad");
+    let missing = ws.0.join("does-not-exist");
+    let out = hb(&ws)
+        .args(["run", "--sdmc", missing.to_str().unwrap(), "app.nro"])
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{err}");
+    assert!(err.contains("--sdmc"), "{err}");
+    assert!(err.contains("does not exist"), "{err}");
+
+    let out = hb(&ws)
+        .args(["run", "--sdmc", "app.nro", "app.nro"])
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{err}");
+    assert!(err.contains("--sdmc"), "{err}");
+    assert!(err.contains("not a directory"), "{err}");
+}
+
+#[test]
+fn bad_cpu_values_are_refused_with_exit_2() {
+    let ws = TempWorkspace::new("cpu-bad");
+    for args in [
+        vec!["run", "--cpu", "bogus", "app.nro"],
+        vec!["run", "--cpu=bogus", "app.nro"],
+        vec!["repro", "--cpu", "bogus", "app.nro"],
+    ] {
+        let out = hb(&ws).args(args).output().unwrap();
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(2), "{err}");
+        assert!(
+            err.contains("--cpu must be interp, tier3, or tier4"),
+            "{err}"
+        );
+    }
+}
+
+#[test]
+fn cpu_and_sdmc_are_forwarded_to_backend_and_recorded_in_repro() {
+    let ws = TempWorkspace::new("cpu-sdmc-fwd");
+    let sdmc_dir = ws.0.join("sdmc");
+    fs::create_dir_all(&sdmc_dir).unwrap();
+    let core_log = ws.0.join("core_args.txt");
+
+    let core = ws.write_script(
+        "core",
+        &format!(
+            r#"printf '%s\n' "$@" > "{}"
+cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{{"schema":"ounce.run.v1","engine":"ounce-core","engine_version":"0.9.0","tier":"tier4","silent_fallback":false,"stop_kind":"clean_exit","exit_code":0,"pc":null,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":null,"insns_executed":10,"message":null}}
+EOF
+echo '[VM] Process exited gracefully (svcExitProcess).'
+exit 0"#,
+            core_log.display()
+        ),
+    );
+    let rt = ws.write_script(
+        "rt",
+        r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{"schema":"ounce.run.v1","engine":"ounce-runtime","engine_version":"0.6.0","tier":"tier4","silent_fallback":false,"stop_kind":"cpu_error","exit_code":12,"pc":2147483648,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":null,"insns_executed":5,"message":"jit fault"}
+EOF
+exit 1"#,
+    );
+
+    for (cli_cpu, expected_flag) in [
+        ("interp", "--cpu=interpreter"),
+        ("tier3", "--cpu=tier3"),
+        ("tier4", "--cpu=tier4"),
+    ] {
+        let out = hb(&ws)
+            .args([
+                "run",
+                "--cpu",
+                cli_cpu,
+                "--sdmc",
+                sdmc_dir.to_str().unwrap(),
+                "app.nro",
+            ])
+            .env("OUNCE_CORE_BIN", &core)
+            .output()
+            .unwrap();
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let logged = fs::read_to_string(&core_log).unwrap();
+        assert!(logged.lines().any(|l| l == expected_flag), "{logged}");
+        assert!(
+            logged
+                .lines()
+                .any(|l| l == format!("--sdmc={}", sdmc_dir.display())),
+            "{logged}"
+        );
+    }
+
+    // `--auto` records `cpu` and `sdmc` in `ounce-repro.json`, and `repro` replays them.
+    let auto_out = hb(&ws)
+        .args(["run", "--auto", "--cpu=tier4", "--sdmc=sdmc", "app.nro"])
+        .env("OUNCE_CORE_BIN", &core)
+        .env("OUNCE_RUNTIME_BIN", &rt)
+        .output()
+        .unwrap();
+    assert_eq!(
+        auto_out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&auto_out.stderr)
+    );
+    let repro_json = fs::read_to_string(ws.0.join("ounce-repro.json")).unwrap();
+    assert!(repro_json.contains("\"cpu\": \"tier4\""), "{repro_json}");
+    assert!(repro_json.contains("\"sdmc\": \"sdmc\""), "{repro_json}");
+
+    let _ = fs::remove_file(&core_log);
+    let repro_out = hb(&ws)
+        .args(["repro", "ounce-repro.json"])
+        .env("OUNCE_CORE_BIN", &core)
+        .output()
+        .unwrap();
+    assert_eq!(
+        repro_out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&repro_out.stderr)
+    );
+    let logged = fs::read_to_string(&core_log).unwrap();
+    assert!(logged.lines().any(|l| l == "--cpu=tier4"), "{logged}");
+    let sdmc_arg = logged
+        .lines()
+        .find_map(|l| l.strip_prefix("--sdmc="))
+        .expect("missing --sdmc= arg");
+    assert_eq!(
+        ws.0.join(sdmc_arg).canonicalize().unwrap(),
+        sdmc_dir.canonicalize().unwrap()
+    );
+}

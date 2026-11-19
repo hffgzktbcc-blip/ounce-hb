@@ -116,10 +116,42 @@ pub fn format_repro_bundle(
     runtime_exit: Option<i32>,
     core_exit: Option<i32>,
 ) -> String {
+    format_repro_bundle_with_opts(
+        program_path,
+        program_len,
+        guest_args,
+        None,
+        None,
+        runtime_report,
+        core_report,
+        runtime_exit,
+        core_exit,
+    )
+}
+
+/// Format a self-contained `repro.json` bundle with optional `--cpu` and `--sdmc` settings.
+#[allow(clippy::too_many_arguments)]
+pub fn format_repro_bundle_with_opts(
+    program_path: &str,
+    program_len: usize,
+    guest_args: &[String],
+    cpu: Option<crate::CpuTier>,
+    sdmc: Option<&str>,
+    runtime_report: Option<&ReportV1>,
+    core_report: Option<&ReportV1>,
+    runtime_exit: Option<i32>,
+    core_exit: Option<i32>,
+) -> String {
     let args_json: Vec<String> = guest_args
         .iter()
         .map(|a| format!("\"{}\"", escape_json(a)))
         .collect();
+    let cpu_json = cpu
+        .map(|c| format!("\"{}\"", c.as_str()))
+        .unwrap_or_else(|| "null".to_string());
+    let sdmc_json = sdmc
+        .map(|s| format!("\"{}\"", escape_json(s)))
+        .unwrap_or_else(|| "null".to_string());
     let rt_kind = runtime_report
         .map(|r| format!("\"{}\"", escape_json(&r.stop_kind)))
         .unwrap_or_else(|| "null".to_string());
@@ -162,10 +194,12 @@ pub fn format_repro_bundle(
         .unwrap_or_else(|| "null".to_string());
 
     format!(
-        "{{\n  \"schema\": \"ounce.repro.v1\",\n  \"program_path\": \"{}\",\n  \"program_bytes\": {},\n  \"guest_args\": [{}],\n  \"runtime\": {{\n    \"tier\": {},\n    \"stop_kind\": {},\n    \"exit_code\": {},\n    \"pc\": {},\n    \"insns_executed\": {},\n    \"frames_presented\": {},\n    \"framebuffer_hash\": {}\n  }},\n  \"core\": {{\n    \"stop_kind\": {},\n    \"exit_code\": {},\n    \"pc\": {},\n    \"insns_executed\": {},\n    \"frames_presented\": {},\n    \"framebuffer_hash\": {}\n  }}\n}}\n",
+        "{{\n  \"schema\": \"ounce.repro.v1\",\n  \"program_path\": \"{}\",\n  \"program_bytes\": {},\n  \"guest_args\": [{}],\n  \"cpu\": {},\n  \"sdmc\": {},\n  \"runtime\": {{\n    \"tier\": {},\n    \"stop_kind\": {},\n    \"exit_code\": {},\n    \"pc\": {},\n    \"insns_executed\": {},\n    \"frames_presented\": {},\n    \"framebuffer_hash\": {}\n  }},\n  \"core\": {{\n    \"stop_kind\": {},\n    \"exit_code\": {},\n    \"pc\": {},\n    \"insns_executed\": {},\n    \"frames_presented\": {},\n    \"framebuffer_hash\": {}\n  }}\n}}\n",
         escape_json(program_path),
         program_len,
         args_json.join(", "),
+        cpu_json,
+        sdmc_json,
         rt_tier,
         rt_kind,
         rt_exit,
@@ -187,6 +221,8 @@ pub fn format_repro_bundle(
 pub struct ReproManifest {
     pub program_path: String,
     pub guest_args: Vec<String>,
+    pub cpu: Option<crate::CpuTier>,
+    pub sdmc: Option<String>,
     pub expected_stop_kind: Option<String>,
     pub expected_exit_code: Option<i32>,
     /// From the manifest's `core` section; checked by `ounce-hb repro` only when present.
@@ -203,6 +239,8 @@ impl ReproManifest {
         }
         let program_path = extract_str(json, "program_path")?;
         let guest_args = extract_str_array(json, "guest_args").unwrap_or_default();
+        let cpu = extract_str(json, "cpu").and_then(|s| crate::CpuTier::parse(&s));
+        let sdmc = extract_str(json, "sdmc");
         let core_section = extract_object_section(json, "core");
         let expected_stop_kind = core_section.and_then(|s| extract_str(s, "stop_kind"));
         let expected_exit_code =
@@ -214,6 +252,8 @@ impl ReproManifest {
         Some(Self {
             program_path,
             guest_args,
+            cpu,
+            sdmc,
             expected_stop_kind,
             expected_exit_code,
             expected_frames_presented,
@@ -486,6 +526,57 @@ mod tests {
             (m.expected_frames_presented, m.expected_framebuffer_hash),
             (Some(0), None)
         );
+    }
+
+    #[test]
+    fn repro_bundle_round_trips_cpu_and_sdmc() {
+        let mk = |frames, hash: Option<&str>| ReportV1 {
+            schema: "ounce.run.v1".into(),
+            engine: "e".into(),
+            engine_version: String::new(),
+            tier: "tier4".into(),
+            silent_fallback: false,
+            stop_kind: "clean_exit".into(),
+            exit_code: 0,
+            pc: None,
+            opcode: None,
+            fault_addr: None,
+            svc_id: None,
+            break_result: None,
+            insns_executed: 1,
+            frames_presented: frames,
+            framebuffer_hash: hash.map(str::to_string),
+            message: None,
+        };
+        let json = format_repro_bundle_with_opts(
+            "p.nro",
+            1,
+            &[],
+            Some(crate::CpuTier::Tier4),
+            Some("sdmc_dir"),
+            Some(&mk(0, None)),
+            Some(&mk(0, None)),
+            Some(0),
+            Some(0),
+        );
+        let m = ReproManifest::parse(&json).unwrap();
+        assert_eq!(m.cpu, Some(crate::CpuTier::Tier4));
+        assert_eq!(m.sdmc.as_deref(), Some("sdmc_dir"));
+
+        let json_none = format_repro_bundle_with_opts(
+            "p.nro",
+            1,
+            &[],
+            None,
+            None,
+            Some(&mk(0, None)),
+            Some(&mk(0, None)),
+            Some(0),
+            Some(0),
+        );
+        let m_none = ReproManifest::parse(&json_none).unwrap();
+        assert_eq!(m_none.cpu, None);
+        assert_eq!(m_none.sdmc, None);
     }
 
     #[test]

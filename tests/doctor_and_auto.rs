@@ -563,7 +563,8 @@ fi"#,
         "expected git bisect to hit a skipped commit:\n{stderr}"
     );
     assert!(
-        stdout.contains(&format!("{bad_sha} is the first bad commit")),
+        stdout.contains(&format!("{bad_sha} is the first bad commit"))
+            || stdout.contains(&format!("{bad_sha} is the first 'bad' commit")),
         "expected {bad_sha} as first bad commit:\n{stdout}"
     );
 }

@@ -173,6 +173,8 @@ pub struct RunOutput {
     pub stderr_dropped: u64,
     /// Structured `ounce.run.v1` JSON report emitted via `--report-json`, when supported by engine.
     pub report_json: Option<String>,
+    /// Structured `ounce.trace.v1` JSON summary emitted via `OUNCE_TRACE_SUMMARY`, when requested.
+    pub trace_json: Option<String>,
 }
 
 impl RunOutput {
@@ -195,6 +197,7 @@ pub struct Subprocess {
     timeout: Duration,
     cpu: Option<CpuTier>,
     sdmc: Option<PathBuf>,
+    trace_summary: bool,
 }
 
 impl Subprocess {
@@ -204,6 +207,7 @@ impl Subprocess {
             timeout,
             cpu: None,
             sdmc: None,
+            trace_summary: false,
         }
     }
 
@@ -214,6 +218,11 @@ impl Subprocess {
 
     pub fn with_sdmc(mut self, sdmc: Option<PathBuf>) -> Self {
         self.sdmc = sdmc;
+        self
+    }
+
+    pub fn with_trace_summary(mut self, trace_summary: bool) -> Self {
+        self.trace_summary = trace_summary;
         self
     }
 }
@@ -228,6 +237,7 @@ impl Backend for Subprocess {
             validate_sdmc_dir(dir)?;
         }
         let report_path = program.dir().join("report.json");
+        let trace_path = program.dir().join("trace.json");
         let mut cmd = Command::new(&self.bin);
         cmd.arg("run-nro").arg(program.path()).arg(HEADLESS);
         if let Some(tier) = self.cpu {
@@ -243,6 +253,9 @@ impl Backend for Subprocess {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if self.trace_summary {
+            cmd.env("OUNCE_TRACE_SUMMARY", &trace_path);
+        }
         // Its own process group, so that a kill reaches everything the child starts. Ctrl-C from a
         // terminal then no longer reaches the child directly; the death watch below covers that.
         #[cfg(unix)]
@@ -292,6 +305,13 @@ impl Backend for Subprocess {
         let status = status?;
         let report_json = fs::read_to_string(&report_path).ok();
         let _ = fs::remove_file(&report_path);
+        let trace_json = if self.trace_summary {
+            let t = fs::read_to_string(&trace_path).ok();
+            let _ = fs::remove_file(&trace_path);
+            t
+        } else {
+            None
+        };
         Ok(RunOutput {
             exit_code: status.code(),
             stdout: stdout.text,
@@ -299,6 +319,7 @@ impl Backend for Subprocess {
             stdout_dropped: stdout.dropped,
             stderr_dropped: stderr.dropped,
             report_json,
+            trace_json,
         })
     }
 }

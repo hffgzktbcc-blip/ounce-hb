@@ -10,6 +10,7 @@ usage:
   ounce-hb run [--backend <core|runtime|auto|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] [--auto] [--timeout <secs>] [--json] [--expect-hash <hash>] [--expect-stdout <text>] <file.nro> [-- guest args...]
   ounce-hb repro [--backend <core|runtime|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] <bundle.json|dir>
   ounce-hb bisect [--backend <core|runtime|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] <bundle.json|dir>
+  ounce-hb diff-trace [--cpu <interp|tier3|tier4>] [--sdmc <dir>] [--timeout <secs>] <file.nro> [-- guest args...]
   ounce-hb doctor [--json]";
 
 enum Action<'a> {
@@ -27,6 +28,11 @@ enum Action<'a> {
         backend: Option<&'a str>,
         cpu: Option<ounce_hb::CpuTier>,
         sdmc: Option<&'a str>,
+    },
+    DiffTrace {
+        path: &'a str,
+        guest: &'a [String],
+        opts: RunOpts<'a>,
     },
     Run {
         path: &'a str,
@@ -70,6 +76,7 @@ fn main() -> ExitCode {
             cpu,
             sdmc,
         }) => run_bisect(path, backend, cpu, sdmc),
+        Ok(Action::DiffTrace { path, guest, opts }) => run_diff_trace(path, guest, opts),
         Ok(Action::Run {
             path,
             guest,
@@ -239,6 +246,65 @@ fn parse(args: &[String]) -> Result<Action<'_>, String> {
                 cpu: parsed.cpu,
                 sdmc: parsed.sdmc,
             });
+        }
+        Some("diff-trace") => {
+            let mut path = None;
+            let mut opts = RunOpts::default();
+            let mut i = 1;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--" => {
+                        return path
+                            .map(|p| Action::DiffTrace {
+                                path: p,
+                                guest: &args[i + 1..],
+                                opts,
+                            })
+                            .ok_or_else(|| USAGE.to_string());
+                    }
+                    "--timeout" => {
+                        if opts.timeout.is_some() {
+                            return Err(format!("ounce-hb: duplicate --timeout.\n{USAGE}"));
+                        }
+                        i += 1;
+                        let value = args.get(i).map(String::as_str).unwrap_or("");
+                        opts.timeout = Some(
+                            ounce_hb::parse_timeout_named(value, "--timeout")
+                                .map_err(|e| format!("ounce-hb: {e}\n{USAGE}"))?,
+                        );
+                    }
+                    a if a.starts_with("--timeout=") => {
+                        if opts.timeout.is_some() {
+                            return Err(format!("ounce-hb: duplicate --timeout.\n{USAGE}"));
+                        }
+                        let value = a.strip_prefix("--timeout=").unwrap_or("");
+                        opts.timeout = Some(
+                            ounce_hb::parse_timeout_named(value, "--timeout")
+                                .map_err(|e| format!("ounce-hb: {e}\n{USAGE}"))?,
+                        );
+                    }
+                    a if a == "--cpu" || a.starts_with("--cpu=") => {
+                        parse_cpu_arg(a, args, &mut i, &mut opts.cpu)?;
+                    }
+                    a if a == "--sdmc" || a.starts_with("--sdmc=") => {
+                        parse_sdmc_arg(a, args, &mut i, &mut opts.sdmc)?;
+                    }
+                    value if path.is_none() && !value.starts_with('-') => path = Some(value),
+                    extra => {
+                        return Err(format!(
+                            "ounce-hb: unexpected argument {extra:?}; guest arguments go after '--'.\n{USAGE}"
+                        ));
+                    }
+                }
+                i += 1;
+            }
+            return path
+                .map(|p| Action::DiffTrace {
+                    path: p,
+                    guest: &args[args.len()..],
+                    opts,
+                })
+                .ok_or_else(|| USAGE.to_string());
         }
         Some("run") => {}
         _ => return Err(USAGE.to_string()),
@@ -704,6 +770,48 @@ fn execute_repro(
                     actual_frames
                 ));
             }
+            let actual_insns = parsed_report
+                .as_ref()
+                .map(|r| r.insns_executed.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            append_github_step_summary(
+                &format!("ounce-hb repro failure (`{}`)", manifest_path.display()),
+                &[
+                    SummaryRow {
+                        program: &manifest.program_path,
+                        source: "expected (core)",
+                        stop_kind: manifest.expected_stop_kind.as_deref().unwrap_or("-"),
+                        exit_code: manifest
+                            .expected_exit_code
+                            .map(|c| c.to_string())
+                            .unwrap_or_else(|| "-".to_string()),
+                        insns: "-".to_string(),
+                        frames: manifest
+                            .expected_frames_presented
+                            .map(|f| f.to_string())
+                            .unwrap_or_else(|| "-".to_string()),
+                        hash: manifest.expected_framebuffer_hash.as_deref().unwrap_or("-"),
+                    },
+                    SummaryRow {
+                        program: &manifest.program_path,
+                        source: "actual",
+                        stop_kind: if actual_kind.is_empty() {
+                            "-"
+                        } else {
+                            actual_kind
+                        },
+                        exit_code: actual_code
+                            .map(|c| c.to_string())
+                            .unwrap_or_else(|| "-".to_string()),
+                        insns: actual_insns,
+                        frames: actual_frames
+                            .map(|f| f.to_string())
+                            .unwrap_or_else(|| "-".to_string()),
+                        hash: actual_hash.unwrap_or("-"),
+                    },
+                ],
+                None,
+            );
         }
     }
 
@@ -1112,6 +1220,14 @@ fn run_auto(
     if std::fs::write("ounce-repro.json", &bundle).is_ok() {
         say_err("ounce-hb: wrote repro bundle to ounce-repro.json\n");
     }
+    append_github_step_summary(
+        &format!("ounce-hb run --auto divergence (`{path}`)"),
+        &[
+            SummaryRow::from_report(path, "ounce-runtime", rt_report.as_ref(), rt_out.exit_code),
+            SummaryRow::from_report(path, "ounce-core", core_report.as_ref(), core_out.exit_code),
+        ],
+        None,
+    );
     say_err(&format!(
         "ounce-hb: next: run `ounce-core diverge {path}` on an AArch64 host to pinpoint the diverging instruction.\n"
     ));
@@ -1121,6 +1237,238 @@ fn run_auto(
         &core_out,
         core_report.as_ref(),
     )
+}
+
+struct SummaryRow<'a> {
+    program: &'a str,
+    source: &'a str,
+    stop_kind: &'a str,
+    exit_code: String,
+    insns: String,
+    frames: String,
+    hash: &'a str,
+}
+
+impl<'a> SummaryRow<'a> {
+    fn from_report(
+        program: &'a str,
+        source: &'a str,
+        report: Option<&'a ounce_hb::report_v1::ReportV1>,
+        fallback_exit: Option<i32>,
+    ) -> Self {
+        Self {
+            program,
+            source,
+            stop_kind: report.map(|r| r.stop_kind.as_str()).unwrap_or("-"),
+            exit_code: report
+                .map(|r| r.exit_code)
+                .or(fallback_exit)
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            insns: report
+                .map(|r| r.insns_executed.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            frames: report
+                .map(|r| r.frames_presented.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            hash: report
+                .and_then(|r| r.framebuffer_hash.as_deref())
+                .unwrap_or("-"),
+        }
+    }
+}
+
+fn append_github_step_summary(heading: &str, rows: &[SummaryRow<'_>], detail: Option<&str>) {
+    let Some(summary_path) = std::env::var_os("GITHUB_STEP_SUMMARY").filter(|v| !v.is_empty())
+    else {
+        return;
+    };
+    let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(summary_path)
+    else {
+        return;
+    };
+    let _ = writeln!(file, "### {heading}\n");
+    let _ = writeln!(
+        file,
+        "| Program | Engine | Stop Kind (`stop_kind`) | Exit Code | Instructions (`insns_executed`) | Frames (`frames_presented`) | Framebuffer Hash (`framebuffer_hash`) |"
+    );
+    let _ = writeln!(file, "| --- | --- | --- | --- | --- | --- | --- |");
+    for r in rows {
+        let _ = writeln!(
+            file,
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |",
+            r.program, r.source, r.stop_kind, r.exit_code, r.insns, r.frames, r.hash
+        );
+    }
+    if let Some(note) = detail {
+        let _ = writeln!(file, "\n> **First divergence:** {note}");
+    }
+    let _ = writeln!(file);
+}
+
+fn run_diff_trace(path: &str, guest: &[String], opts: RunOpts<'_>) -> ExitCode {
+    if let Some(dir) = opts.sdmc
+        && let Err(e) = ounce_hb::validate_sdmc_dir(Path::new(dir))
+    {
+        say_err(&format!("ounce-hb: {e}\n"));
+        return ExitCode::from(2);
+    }
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            say_err(&format!("ounce-hb: cannot read {path}: {e}\n"));
+            return ExitCode::from(2);
+        }
+    };
+    let kind = match ounce_hb::classify(&bytes) {
+        Ok(k) => k,
+        Err(r) => {
+            say_err(&format!("ounce-hb: rejected {path}: {r}\n"));
+            return ExitCode::from(2);
+        }
+    };
+
+    let rt_out = match ounce_hb::run_engine_trace_opts(
+        &ounce_hb::Engine::Runtime,
+        kind,
+        &bytes,
+        guest,
+        opts.timeout,
+        opts.cpu,
+        opts.sdmc.map(Path::new),
+    ) {
+        Ok(out) => out,
+        Err(e) => {
+            let reason = ounce_hb::diagnose::from_error(&e);
+            say_err(&reason.explain_backend(path, guest, Some(std::ffi::OsStr::new("runtime"))));
+            return ExitCode::from(reason.exit_code());
+        }
+    };
+    let core_out = match ounce_hb::run_engine_trace_opts(
+        &ounce_hb::Engine::Core,
+        kind,
+        &bytes,
+        guest,
+        opts.timeout,
+        opts.cpu,
+        opts.sdmc.map(Path::new),
+    ) {
+        Ok(out) => out,
+        Err(e) => {
+            let reason = ounce_hb::diagnose::from_error(&e);
+            say_err(&reason.explain_backend(path, guest, Some(std::ffi::OsStr::new("core"))));
+            return ExitCode::from(reason.exit_code());
+        }
+    };
+
+    let rt_report = rt_out
+        .report_json
+        .as_deref()
+        .and_then(ounce_hb::report_v1::ReportV1::parse);
+    let core_report = core_out
+        .report_json
+        .as_deref()
+        .and_then(ounce_hb::report_v1::ReportV1::parse);
+
+    let Some(rt_trace) = rt_out
+        .trace_json
+        .as_deref()
+        .and_then(ounce_hb::report_v1::TraceV1::parse)
+        .map(|t| t.with_report_fallback(rt_report.as_ref()))
+    else {
+        say_err(
+            "ounce-hb: diff-trace: ounce-runtime did not emit a valid ounce.trace.v1 summary.\n",
+        );
+        return ExitCode::from(1);
+    };
+    let Some(core_trace) = core_out
+        .trace_json
+        .as_deref()
+        .and_then(ounce_hb::report_v1::TraceV1::parse)
+        .map(|t| t.with_report_fallback(core_report.as_ref()))
+    else {
+        say_err("ounce-hb: diff-trace: ounce-core did not emit a valid ounce.trace.v1 summary.\n");
+        return ExitCode::from(1);
+    };
+
+    if let Some(diff) = ounce_hb::report_v1::diff_traces(&rt_trace, &core_trace) {
+        say_err(&format!(
+            "ounce-hb: diff-trace: trace divergence on {path}: {diff}\n"
+        ));
+        let rt_row = SummaryRow {
+            program: path,
+            source: "ounce-runtime",
+            stop_kind: rt_trace
+                .stop_kind
+                .as_deref()
+                .or_else(|| rt_report.as_ref().map(|r| r.stop_kind.as_str()))
+                .unwrap_or("-"),
+            exit_code: rt_trace
+                .exit_code
+                .or_else(|| rt_report.as_ref().map(|r| r.exit_code))
+                .or(rt_out.exit_code)
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            insns: rt_trace
+                .insns_executed
+                .or_else(|| rt_report.as_ref().map(|r| r.insns_executed))
+                .map(|i| i.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            frames: rt_report
+                .as_ref()
+                .map(|r| r.frames_presented.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            hash: rt_report
+                .as_ref()
+                .and_then(|r| r.framebuffer_hash.as_deref())
+                .unwrap_or("-"),
+        };
+        let core_row = SummaryRow {
+            program: path,
+            source: "ounce-core",
+            stop_kind: core_trace
+                .stop_kind
+                .as_deref()
+                .or_else(|| core_report.as_ref().map(|r| r.stop_kind.as_str()))
+                .unwrap_or("-"),
+            exit_code: core_trace
+                .exit_code
+                .or_else(|| core_report.as_ref().map(|r| r.exit_code))
+                .or(core_out.exit_code)
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            insns: core_trace
+                .insns_executed
+                .or_else(|| core_report.as_ref().map(|r| r.insns_executed))
+                .map(|i| i.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            frames: core_report
+                .as_ref()
+                .map(|r| r.frames_presented.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            hash: core_report
+                .as_ref()
+                .and_then(|r| r.framebuffer_hash.as_deref())
+                .unwrap_or("-"),
+        };
+        append_github_step_summary(
+            &format!("ounce-hb diff-trace divergence (`{path}`)"),
+            &[rt_row, core_row],
+            Some(&diff),
+        );
+        return ExitCode::from(1);
+    }
+
+    say_out(&format!(
+        "ounce-hb diff-trace: traces agree on {path} (steps_compared={}, insns_executed={:?}, stop_kind={:?}).\n",
+        rt_trace.steps.len().min(core_trace.steps.len()),
+        core_trace.insns_executed,
+        core_trace.stop_kind,
+    ));
+    ExitCode::from(0)
 }
 
 fn say_out(text: &str) {

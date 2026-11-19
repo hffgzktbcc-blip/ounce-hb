@@ -107,6 +107,23 @@ wraps `repro` for `git bisect run`, returning `0` on pass, `1` on mismatch, and
 `125` (`git bisect skip`) when an infrastructure or refusal error (exits `2`–`5`)
 occurs.
 
+## Diff-Trace
+
+```sh
+./target/release/ounce-hb diff-trace --cpu tier4 path/to/app.nro
+```
+
+`ounce-hb diff-trace [--cpu <interp|tier3|tier4>] [--sdmc <dir>] [--timeout <secs>] <file.nro> [-- guest args...]`
+runs `ounce-runtime` and `ounce-core` with `OUNCE_TRACE_SUMMARY` enabled, parses both
+`ounce.trace.v1` JSON summaries, and exits `0` when the traces agree or `1` with the
+first differing step/field (`pc`, `opcode`, registers, `insns_executed`, `stop_kind`,
+`exit_code`) on stderr.
+
+When `GITHUB_STEP_SUMMARY` is set in the environment, `run --auto`, `repro`, and
+`diff-trace` append a Markdown divergence summary table (`Program`, `Stop Kind`,
+`Exit Code`, `Instructions`, `Frames`, `Framebuffer Hash`) to that file on divergence
+or failure.
+
 See [INTEGRATION.md](INTEGRATION.md) for copy-paste `cargo-nx`, `devkitA64`,
 GitHub Actions, and VS Code `tasks.json` snippets.
 

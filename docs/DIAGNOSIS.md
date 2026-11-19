@@ -210,6 +210,25 @@ Tests: `argument_just_under_the_limit_runs_for_real` (real ounce-core, exit `0`)
 `argument_over_the_limit_is_refused_before_ounce_core_starts` (exit `2`; a marker file shows that no
 ounce-core process starts), in `tests/guest_args.rs`.
 
+## Embedded RomFS and `romfsInit()` stops
+
+Many `libnx` homebrew applications embed a RomFS filesystem inside the trailing `ASET` asset section
+appended after the NRO payload (`u32::from_le_bytes(bytes[0x18..0x1C])`). `ounce_hb::has_embedded_romfs`
+inspects the bytes at that NRO size offset for the `ASET` magic and a non-zero RomFS section size.
+
+When an NRO calls `romfsInit()` and checks `R_FAILED(rc)` (or fails to open `romfs:/...`) on an engine
+version or invocation where RomFS is not mounted:
+
+- **Exit code `13` (`svcBreak`)**: `libnx` startups and examples commonly call `diagAbortWithResult(rc)`
+  or ` fatalThrow(rc)` when `romfsInit()` fails, which traps via `svcBreak` (`[VM] Hit svcBreak:` with
+  `Break PC` and `Break result`).
+- **Exit code `14` (`unhandled SVC`)**: if the guest or runtime hits an unimplemented service / syscall
+  path while opening `fsp-srv` data storage.
+
+Note: newer `ounce-core` builds mount embedded NRO `ASET` RomFS sections automatically; older `ounce-core`
+releases (such as `v0.8.0`/`v0.8.1`) do not mount `romfs:/`, and `ounce-hb` does not expose a separate
+`--romfs <dir>` flag yet (see [LIMITS.md](LIMITS.md)).
+
 ## Host audio noise on stderr
 
 ounce-core v0.8.0 opens the default host audio device on every run, and it has no flag or variable to

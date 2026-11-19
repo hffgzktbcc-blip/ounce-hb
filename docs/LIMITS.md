@@ -24,6 +24,7 @@ Current runner capabilities (see the version-scope note above for what is publis
 - **Format Classification**:
   - Classifies unencrypted homebrew `NRO0` executables (offset `0x10`).
   - Classifies unencrypted homebrew `NSO0` modules (offset `0x00`).
+  - Detects trailing `ASET` asset headers with an embedded RomFS section via `ounce_hb::has_embedded_romfs`.
   - Detects and rejects retail containers with actionable error messages (exit code 2).
 - **Subprocess Runner**:
   - Executes validated NRO files via an external `ounce-core` binary invoked in headless mode (`--present=headless`).
@@ -43,6 +44,7 @@ Current runner capabilities (see the version-scope note above for what is publis
 
 The following features are not yet implemented in M0:
 - **NSO Execution**: While NSO format classification is implemented, running NSO files directly through the runner is not yet supported.
+- **RomFS Mounting (`romfs:/`)**: `ounce_hb::has_embedded_romfs` detects an embedded `ASET` RomFS section in an NRO, and newer `ounce-core` builds mount embedded `ASET` RomFS automatically, but older `ounce-core` releases (`v0.8.x`) do not mount `romfs:/` and `ounce-hb` does not yet expose a `--romfs <dir>` flag for external host folders. On engines without RomFS support, guests that check `romfsInit()` typically abort with `svcBreak` (exit code 13); see [DIAGNOSIS.md](DIAGNOSIS.md#embedded-romfs-and-romfsinit-stops).
 - **Direct Library Integration**: ounce-hb currently runs `ounce-core` via a subprocess. Direct in-process linking is blocked until upstream `ounce-core` exposes a library target (see [OUNCE_CORE_API_NEEDS.md](OUNCE_CORE_API_NEEDS.md)).
 - **Display & Graphics**: Execution is strictly headless (`--present=headless`). There is no virtual display, framebuffer presentation, or GPU pipeline.
 - **Audio Output**: ounce-hb does no audio itself. ounce-core v0.8.0 opens the default host audio device on every run; v0.8.1 does not in headless mode (see Host Audio Noise below), and guest audio service emulation is ounce-core's, not ounce-hb's.

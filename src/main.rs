@@ -7,8 +7,9 @@ use std::time::Duration;
 
 const USAGE: &str = "\
 usage:
-  ounce-hb run [--backend <core|runtime|auto|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] [--auto] [--timeout <secs>] [--json] <file.nro> [-- guest args...]
+  ounce-hb run [--backend <core|runtime|auto|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] [--auto] [--timeout <secs>] [--json] [--expect-hash <hash>] [--expect-stdout <text>] <file.nro> [-- guest args...]
   ounce-hb repro [--backend <core|runtime|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] <bundle.json|dir>
+  ounce-hb bisect [--backend <core|runtime|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] <bundle.json|dir>
   ounce-hb doctor [--json]";
 
 enum Action<'a> {
@@ -16,6 +17,12 @@ enum Action<'a> {
         json: bool,
     },
     Repro {
+        path: &'a str,
+        backend: Option<&'a str>,
+        cpu: Option<ounce_hb::CpuTier>,
+        sdmc: Option<&'a str>,
+    },
+    Bisect {
         path: &'a str,
         backend: Option<&'a str>,
         cpu: Option<ounce_hb::CpuTier>,
@@ -41,6 +48,10 @@ struct RunOpts<'a> {
     cpu: Option<ounce_hb::CpuTier>,
     /// `--sdmc <dir>`: host directory mounted at `sdmc:/`.
     sdmc: Option<&'a str>,
+    /// `--expect-hash <hash>`: require `ReportV1::framebuffer_hash` to match this value.
+    expect_hash: Option<&'a str>,
+    /// `--expect-stdout <substring>`: require captured stdout to contain this substring.
+    expect_stdout: Option<&'a str>,
 }
 
 fn main() -> ExitCode {
@@ -53,6 +64,12 @@ fn main() -> ExitCode {
             cpu,
             sdmc,
         }) => run_repro(path, backend, cpu, sdmc),
+        Ok(Action::Bisect {
+            path,
+            backend,
+            cpu,
+            sdmc,
+        }) => run_bisect(path, backend, cpu, sdmc),
         Ok(Action::Run {
             path,
             guest,
@@ -112,6 +129,85 @@ fn parse_sdmc_arg<'a>(
     Ok(())
 }
 
+fn parse_value_arg<'a>(
+    flag: &str,
+    arg: &'a str,
+    args: &'a [String],
+    i: &mut usize,
+    target: &mut Option<&'a str>,
+    allow_leading_dash: bool,
+) -> Result<(), String> {
+    if target.is_some() {
+        return Err(format!("ounce-hb: duplicate {flag}.\n{USAGE}"));
+    }
+    let prefix = format!("{flag}=");
+    let value = if let Some(v) = arg.strip_prefix(&prefix) {
+        Some(v).filter(|v| !v.is_empty())
+    } else {
+        *i += 1;
+        args.get(*i)
+            .map(String::as_str)
+            .filter(|v| !v.is_empty() && (allow_leading_dash || !v.starts_with('-')))
+    };
+    if value.is_none() {
+        return Err(format!("ounce-hb: {flag} requires a value.\n{USAGE}"));
+    }
+    *target = value;
+    Ok(())
+}
+
+struct ReproArgs<'a> {
+    path: &'a str,
+    backend: Option<&'a str>,
+    cpu: Option<ounce_hb::CpuTier>,
+    sdmc: Option<&'a str>,
+}
+
+fn parse_repro_args(args: &[String]) -> Result<ReproArgs<'_>, String> {
+    let mut path = None;
+    let mut backend = None;
+    let mut cpu = None;
+    let mut sdmc = None;
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--backend" => {
+                if backend.is_some() {
+                    return Err(format!("ounce-hb: duplicate --backend.\n{USAGE}"));
+                }
+                i += 1;
+                backend = args
+                    .get(i)
+                    .map(String::as_str)
+                    .filter(|v| !v.is_empty() && !v.starts_with('-'));
+                if backend.is_none() {
+                    return Err(format!(
+                        "ounce-hb: --backend requires core, runtime, auto, or a path.\n{USAGE}"
+                    ));
+                }
+            }
+            a if a == "--cpu" || a.starts_with("--cpu=") => {
+                parse_cpu_arg(a, args, &mut i, &mut cpu)?;
+            }
+            a if a == "--sdmc" || a.starts_with("--sdmc=") => {
+                parse_sdmc_arg(a, args, &mut i, &mut sdmc)?;
+            }
+            value if path.is_none() && !value.starts_with('-') => path = Some(value),
+            other => {
+                return Err(format!("ounce-hb: unexpected argument {other:?}.\n{USAGE}"));
+            }
+        }
+        i += 1;
+    }
+    path.map(|path| ReproArgs {
+        path,
+        backend,
+        cpu,
+        sdmc,
+    })
+    .ok_or_else(|| USAGE.to_string())
+}
+
 fn parse(args: &[String]) -> Result<Action<'_>, String> {
     match args.first().map(String::as_str) {
         Some("doctor") => {
@@ -127,49 +223,22 @@ fn parse(args: &[String]) -> Result<Action<'_>, String> {
             return Ok(Action::Doctor { json });
         }
         Some("repro") => {
-            let mut path = None;
-            let mut backend = None;
-            let mut cpu = None;
-            let mut sdmc = None;
-            let mut i = 1;
-            while i < args.len() {
-                match args[i].as_str() {
-                    "--backend" => {
-                        if backend.is_some() {
-                            return Err(format!("ounce-hb: duplicate --backend.\n{USAGE}"));
-                        }
-                        i += 1;
-                        backend = args
-                            .get(i)
-                            .map(String::as_str)
-                            .filter(|v| !v.is_empty() && !v.starts_with('-'));
-                        if backend.is_none() {
-                            return Err(format!(
-                                "ounce-hb: --backend requires core, runtime, auto, or a path.\n{USAGE}"
-                            ));
-                        }
-                    }
-                    a if a == "--cpu" || a.starts_with("--cpu=") => {
-                        parse_cpu_arg(a, args, &mut i, &mut cpu)?;
-                    }
-                    a if a == "--sdmc" || a.starts_with("--sdmc=") => {
-                        parse_sdmc_arg(a, args, &mut i, &mut sdmc)?;
-                    }
-                    value if path.is_none() && !value.starts_with('-') => path = Some(value),
-                    other => {
-                        return Err(format!("ounce-hb: unexpected argument {other:?}.\n{USAGE}"));
-                    }
-                }
-                i += 1;
-            }
-            return path
-                .map(|p| Action::Repro {
-                    path: p,
-                    backend,
-                    cpu,
-                    sdmc,
-                })
-                .ok_or_else(|| USAGE.to_string());
+            let parsed = parse_repro_args(args)?;
+            return Ok(Action::Repro {
+                path: parsed.path,
+                backend: parsed.backend,
+                cpu: parsed.cpu,
+                sdmc: parsed.sdmc,
+            });
+        }
+        Some("bisect") => {
+            let parsed = parse_repro_args(args)?;
+            return Ok(Action::Bisect {
+                path: parsed.path,
+                backend: parsed.backend,
+                cpu: parsed.cpu,
+                sdmc: parsed.sdmc,
+            });
         }
         Some("run") => {}
         _ => return Err(USAGE.to_string()),
@@ -226,6 +295,26 @@ fn parse(args: &[String]) -> Result<Action<'_>, String> {
             }
             a if a == "--sdmc" || a.starts_with("--sdmc=") => {
                 parse_sdmc_arg(a, args, &mut i, &mut opts.sdmc)?;
+            }
+            a if a == "--expect-hash" || a.starts_with("--expect-hash=") => {
+                parse_value_arg(
+                    "--expect-hash",
+                    a,
+                    args,
+                    &mut i,
+                    &mut opts.expect_hash,
+                    false,
+                )?;
+            }
+            a if a == "--expect-stdout" || a.starts_with("--expect-stdout=") => {
+                parse_value_arg(
+                    "--expect-stdout",
+                    a,
+                    args,
+                    &mut i,
+                    &mut opts.expect_stdout,
+                    true,
+                )?;
             }
             value if path.is_none() && !value.starts_with('-') => path = Some(value),
             extra => {
@@ -405,17 +494,27 @@ fn resolve_manifest_path(manifest_path: &Path, target: &str) -> std::path::PathB
     }
 }
 
-fn run_repro(
+struct ReproOutcome {
+    passed: usize,
+    failed: usize,
+    infra_exit: Option<u8>,
+}
+
+fn execute_repro(
     path: &str,
     backend: Option<&str>,
     cpu: Option<ounce_hb::CpuTier>,
     sdmc: Option<&str>,
-) -> ExitCode {
+) -> ReproOutcome {
     if let Some(dir) = sdmc
         && let Err(e) = ounce_hb::validate_sdmc_dir(Path::new(dir))
     {
         say_err(&format!("ounce-hb: {e}\n"));
-        return ExitCode::from(2);
+        return ReproOutcome {
+            passed: 0,
+            failed: 0,
+            infra_exit: Some(2),
+        };
     }
 
     let root = Path::new(path);
@@ -425,7 +524,11 @@ fn run_repro(
             Ok(e) => e,
             Err(e) => {
                 say_err(&format!("ounce-hb: cannot read {path}: {e}\n"));
-                return ExitCode::from(2);
+                return ReproOutcome {
+                    passed: 0,
+                    failed: 0,
+                    infra_exit: Some(2),
+                };
             }
         };
         for entry in entries.flatten() {
@@ -444,7 +547,11 @@ fn run_repro(
 
     if manifests.is_empty() {
         say_err(&format!("ounce-hb: no repro manifests found at {path}\n"));
-        return ExitCode::from(2);
+        return ReproOutcome {
+            passed: 0,
+            failed: 0,
+            infra_exit: Some(2),
+        };
     }
 
     let selection = backend
@@ -457,6 +564,7 @@ fn run_repro(
 
     let mut passed = 0usize;
     let mut failed = 0usize;
+    let mut infra_exit: Option<u8> = None;
     for manifest_path in &manifests {
         let raw = match std::fs::read_to_string(manifest_path) {
             Ok(r) => r,
@@ -465,6 +573,7 @@ fn run_repro(
                     "ounce-hb: failed to read {}: {e}\n",
                     manifest_path.display()
                 ));
+                infra_exit.get_or_insert(2);
                 failed += 1;
                 continue;
             }
@@ -474,6 +583,7 @@ fn run_repro(
                 "ounce-hb: {} is not a valid ounce.repro.v1 manifest\n",
                 manifest_path.display()
             ));
+            infra_exit.get_or_insert(2);
             failed += 1;
             continue;
         };
@@ -486,6 +596,7 @@ fn run_repro(
                     "ounce-hb: cannot read program {}: {e}\n",
                     prog.display()
                 ));
+                infra_exit.get_or_insert(2);
                 failed += 1;
                 continue;
             }
@@ -494,6 +605,7 @@ fn run_repro(
             Ok(k) => k,
             Err(r) => {
                 say_err(&format!("ounce-hb: rejected {}: {r}\n", prog.display()));
+                infra_exit.get_or_insert(2);
                 failed += 1;
                 continue;
             }
@@ -505,6 +617,7 @@ fn run_repro(
             let resolved = resolve_manifest_path(manifest_path, m_sdmc);
             if let Err(e) = ounce_hb::validate_sdmc_dir(&resolved) {
                 say_err(&format!("ounce-hb: {e}\n"));
+                infra_exit.get_or_insert(2);
                 failed += 1;
                 continue;
             }
@@ -523,7 +636,9 @@ fn run_repro(
         ) {
             Ok(o) => o,
             Err(e) => {
+                let code = ounce_hb::diagnose::from_error(&e).exit_code();
                 say_err(&format!("ounce-hb: repro execution failed: {e}\n"));
+                infra_exit.get_or_insert(code);
                 failed += 1;
                 continue;
             }
@@ -592,13 +707,58 @@ fn run_repro(
         }
     }
 
-    if failed > 0 {
+    ReproOutcome {
+        passed,
+        failed,
+        infra_exit,
+    }
+}
+
+fn run_repro(
+    path: &str,
+    backend: Option<&str>,
+    cpu: Option<ounce_hb::CpuTier>,
+    sdmc: Option<&str>,
+) -> ExitCode {
+    let outcome = execute_repro(path, backend, cpu, sdmc);
+    if outcome.passed == 0 && outcome.failed == 0 {
+        return ExitCode::from(outcome.infra_exit.unwrap_or(2));
+    }
+    if outcome.failed > 0 {
         say_err(&format!(
-            "ounce-hb repro: {passed} passed, {failed} failed.\n"
+            "ounce-hb repro: {} passed, {} failed.\n",
+            outcome.passed, outcome.failed
         ));
         ExitCode::from(1)
     } else {
-        println!("ounce-hb repro: {passed} passed, 0 failed.");
+        println!("ounce-hb repro: {} passed, 0 failed.", outcome.passed);
+        ExitCode::from(0)
+    }
+}
+
+fn run_bisect(
+    path: &str,
+    backend: Option<&str>,
+    cpu: Option<ounce_hb::CpuTier>,
+    sdmc: Option<&str>,
+) -> ExitCode {
+    let outcome = execute_repro(path, backend, cpu, sdmc);
+    if let Some(code) = outcome.infra_exit
+        && (2..=5).contains(&code)
+    {
+        say_err(&format!(
+            "ounce-hb bisect: infrastructure/refusal error (exit {code}); mapping to 125 (git bisect skip).\n"
+        ));
+        return ExitCode::from(125);
+    }
+    if outcome.failed > 0 {
+        say_err(&format!(
+            "ounce-hb bisect: {} passed, {} failed (exit 1).\n",
+            outcome.passed, outcome.failed
+        ));
+        ExitCode::from(1)
+    } else {
+        println!("ounce-hb bisect: {} passed, 0 failed.", outcome.passed);
         ExitCode::from(0)
     }
 }
@@ -684,6 +844,7 @@ fn run(
         .map(ounce_hb::Engine::from_selection)
         .unwrap_or(ounce_hb::Engine::Core);
     let mut captured = None;
+    let mut captured_report = None;
     let reason = match ounce_hb::run_engine_opts(
         &engine,
         kind,
@@ -700,6 +861,10 @@ fn run(
             }
             note = ounce_hb::diagnose::truncation_note(&out);
             let reason = ounce_hb::diagnose::from_output(&out);
+            captured_report = out
+                .report_json
+                .as_deref()
+                .and_then(ounce_hb::report_v1::ReportV1::parse);
             captured = Some(out);
             reason
         }
@@ -709,16 +874,60 @@ fn run(
     if let Some(note) = note {
         say_err(&note);
     }
+    let expectations_ok = captured
+        .as_ref()
+        .is_none_or(|out| check_expectations(opts, out, captured_report.as_ref()));
+    let (final_code, final_stop) = if reason.exit_code() == 0 && !expectations_ok {
+        (1, "assertion_failed")
+    } else {
+        (reason.exit_code(), reason.label())
+    };
     if opts.json {
-        emit_run_json(
-            path,
-            reason.exit_code(),
-            reason.label(),
-            captured.as_ref(),
-            opts,
-        );
+        emit_run_json(path, final_code, final_stop, captured.as_ref(), opts);
     }
-    ExitCode::from(reason.exit_code())
+    ExitCode::from(final_code)
+}
+
+fn check_expectations(
+    opts: RunOpts<'_>,
+    out: &ounce_hb::RunOutput,
+    report: Option<&ounce_hb::report_v1::ReportV1>,
+) -> bool {
+    let mut ok = true;
+    if let Some(expected_hash) = opts.expect_hash {
+        let actual_hash = report.and_then(|r| r.framebuffer_hash.as_deref());
+        if actual_hash != Some(expected_hash) {
+            say_err(&format!(
+                "ounce-hb: assertion failed: expected framebuffer_hash {:?}, got {}.\n",
+                expected_hash,
+                actual_hash.map_or_else(|| "none".to_string(), |h| format!("{h:?}"))
+            ));
+            ok = false;
+        }
+    }
+    if let Some(expected_stdout) = opts.expect_stdout
+        && !out.stdout.contains(expected_stdout)
+    {
+        say_err(&format!(
+            "ounce-hb: assertion failed: expected stdout to contain {expected_stdout:?}.\n"
+        ));
+        ok = false;
+    }
+    ok
+}
+
+fn finalize_auto_exit(
+    opts: RunOpts<'_>,
+    reason_code: u8,
+    out: &ounce_hb::RunOutput,
+    report: Option<&ounce_hb::report_v1::ReportV1>,
+) -> ExitCode {
+    let ok = check_expectations(opts, out, report);
+    if reason_code == 0 && !ok {
+        ExitCode::from(1)
+    } else {
+        ExitCode::from(reason_code)
+    }
 }
 
 fn framebuffer_hashes_differ(
@@ -744,6 +953,8 @@ fn run_auto(
     let runtime_available = ounce_hb::Engine::Runtime.locate().is_ok();
     if !runtime_available {
         let core_sel = Some(std::ffi::OsString::from("core"));
+        let mut captured = None;
+        let mut captured_report = None;
         let reason = match ounce_hb::run_engine_opts(
             &ounce_hb::Engine::Core,
             kind,
@@ -756,12 +967,23 @@ fn run_auto(
             Ok(out) => {
                 say_out(&out.stdout);
                 say_err(&out.stderr);
-                ounce_hb::diagnose::from_output(&out)
+                let reason = ounce_hb::diagnose::from_output(&out);
+                captured_report = out
+                    .report_json
+                    .as_deref()
+                    .and_then(ounce_hb::report_v1::ReportV1::parse);
+                captured = Some(out);
+                reason
             }
             Err(e) => ounce_hb::diagnose::from_error(&e),
         };
         say_err(&reason.explain_backend(path, guest, core_sel.as_deref()));
-        return ExitCode::from(reason.exit_code());
+        return match captured {
+            Some(ref out) => {
+                finalize_auto_exit(opts, reason.exit_code(), out, captured_report.as_ref())
+            }
+            None => ExitCode::from(reason.exit_code()),
+        };
     }
 
     let rt_res = ounce_hb::run_engine_opts(
@@ -799,7 +1021,7 @@ fn run_auto(
         say_out(&rt_out.stdout);
         say_err(&rt_out.stderr);
         say_err(&rt_reason.explain_backend(path, guest, Some(std::ffi::OsStr::new("runtime"))));
-        return ExitCode::from(rt_reason.exit_code());
+        return finalize_auto_exit(opts, rt_reason.exit_code(), &rt_out, rt_report.as_ref());
     }
 
     // Escalate to ounce-core for deterministic attribution (Guest Bug vs Runtime Divergence).
@@ -839,11 +1061,16 @@ fn run_auto(
     let hash_diverged = framebuffer_hashes_differ(rt_report.as_ref(), core_report.as_ref());
     if !hash_diverged && core_reason == rt_reason {
         if matches!(core_reason, ounce_hb::diagnose::StopReason::CleanExit) {
-            return ExitCode::from(0);
+            return finalize_auto_exit(opts, 0, &core_out, core_report.as_ref());
         }
         say_err("ounce-hb: attribution = Guest Bug (runtime and ounce-core failed identically).\n");
         say_err(&core_reason.explain_backend(path, guest, Some(std::ffi::OsStr::new("core"))));
-        return ExitCode::from(core_reason.exit_code());
+        return finalize_auto_exit(
+            opts,
+            core_reason.exit_code(),
+            &core_out,
+            core_report.as_ref(),
+        );
     }
 
     let rt_hash = rt_report
@@ -888,7 +1115,12 @@ fn run_auto(
     say_err(&format!(
         "ounce-hb: next: run `ounce-core diverge {path}` on an AArch64 host to pinpoint the diverging instruction.\n"
     ));
-    ExitCode::from(core_reason.exit_code())
+    finalize_auto_exit(
+        opts,
+        core_reason.exit_code(),
+        &core_out,
+        core_report.as_ref(),
+    )
 }
 
 fn say_out(text: &str) {

@@ -94,18 +94,26 @@ cargo run -- doctor --json
 
 # Replay one ounce.repro.v1 bundle or a directory of *.repro.json bundles
 cargo run -- repro ounce-repro.json
+
+# Drive git bisect run against an ounce.repro.v1 bundle (maps exits 2..=5 to 125)
+git bisect run ounce-hb bisect ounce-repro.json
+
+# Assert golden stdout or pre-HUD framebuffer_hash directly in CI or Makefiles
+cargo run -- run --expect-stdout "PASS" --expect-hash fnv1a64:3a00ccf6b6f28ea1 path/to/app.nro
 ```
 
 ### Auto-Escalation (`--auto` / `--backend auto`)
-Passing `--auto` or `--backend auto` runs `ounce-runtime` first when available (falling back to `ounce-core` if `ounce-runtime` is not installed). If `ounce-runtime` reports a silent fallback or stops abnormally (exit codes `10`–`15`), `ounce-hb` automatically escalates to `ounce-core` for deterministic attribution:
+Passing `--auto` or `--backend auto` runs `ounce-runtime` first when available (falling back to `ounce-core` if `ounce-runtime` is not installed). If `ounce-runtime` reports a silent fallback, stops abnormally (exit codes `10`–`15`), or emits a non-null `framebuffer_hash` (when `ounce-core` is available), `ounce-hb` automatically escalates to `ounce-core` for deterministic attribution:
 - **Guest Bug**: `ounce-runtime` and `ounce-core` failed identically.
-- **Runtime Divergence**: the engines disagreed; `ounce-hb` writes an `ounce.repro.v1` bundle to `ounce-repro.json` and suggests `ounce-core diverge <path>` on an AArch64 host.
+- **Runtime Divergence**: the engines disagreed on outcome or `framebuffer_hash`; `ounce-hb` writes an `ounce.repro.v1` bundle to `ounce-repro.json` and suggests `ounce-core diverge <path>` on an AArch64 host.
 
 ### Environment Diagnostics (`doctor`)
 `ounce-hb doctor [--json]` reports the host OS/architecture, whether AArch64 hardware replay is available, and the resolved paths and `--version` strings for `ounce-core` and optional `ounce-runtime`. It exits `0` when at least one engine binary is found and `3` if neither is found.
 
-### Replaying Repro Bundles (`repro`)
-`ounce-hb repro [--backend <core|runtime|path>] <bundle.json|dir>` loads an `ounce-repro.json` / `*.repro.json` (`ounce.repro.v1`) manifest—or all manifests in a directory—and verifies that the selected backend (default `core`) matches the recorded `stop_kind` and `exit_code`. It exits `0` if all manifests pass, `1` if any fail, and `2` on invalid input or missing manifests.
+### Replaying & Bisecting Repro Bundles (`repro`, `bisect`)
+`ounce-hb repro [--backend <core|runtime|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] <bundle.json|dir>` loads an `ounce-repro.json` / `*.repro.json` (`ounce.repro.v1`) manifest—or all manifests in a directory—and verifies that the selected backend (default `core`) matches the recorded `stop_kind`, `exit_code`, and (when present) `framebuffer_hash` / `frames_presented`. It exits `0` if all manifests pass, `1` if any fail, and `2` on invalid input or missing manifests.
+
+`ounce-hb bisect [--backend <core|runtime|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] <bundle.json|dir>` wraps `repro` for `git bisect run`, returning `0` on pass, `1` on mismatch, and `125` (`git bisect skip`) on infrastructure or refusal errors (exits `2`–`5`). See [docs/INTEGRATION.md](docs/INTEGRATION.md) for `cargo-nx`, `devkitA64`, GitHub Actions, and VS Code integration templates.
 
 ### Backend Selection
 `--backend <core|runtime|path>` overrides `OUNCE_BACKEND`; an unset or empty environment
@@ -195,6 +203,7 @@ scripts/guardrails.sh
 - **Project Vision**: [docs/VISION.md](docs/VISION.md) — purpose, pillars, and milestone roadmap.
 - **Honest Limits**: [docs/LIMITS.md](docs/LIMITS.md) — verified current capabilities and explicit permanent limits.
 - **Add a Program**: [docs/ADD_A_PROGRAM.md](docs/ADD_A_PROGRAM.md) — building and testing a homebrew binary with devkitPro.
+- **CI & Editor Integration**: [docs/INTEGRATION.md](docs/INTEGRATION.md) — copy-paste snippets for `cargo-nx`, `devkitA64` Makefiles, GitHub Actions, `git bisect`, and VS Code crash navigation.
 - **Upstream Core Needs**: [docs/OUNCE_CORE_API_NEEDS.md](docs/OUNCE_CORE_API_NEEDS.md) — library API requirements for future in-process ounce-core integration.
 - **Provenance Register**: [docs/PROVENANCE.md](docs/PROVENANCE.md) — tracking of all binary fixtures and their toolchains.
 - **Wiki**: [docs/wiki/Home.md](docs/wiki/Home.md) — repository wiki pages (Home, Getting started, FAQ, Clean-room policy, Architecture, Roadmap).

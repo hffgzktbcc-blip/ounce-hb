@@ -353,3 +353,142 @@ exit 1"#,
         sdmc_dir.canonicalize().unwrap()
     );
 }
+
+#[test]
+fn expect_hash_and_expect_stdout_assert_golden_outputs_on_run() {
+    let ws = TempWorkspace::new("expect-golden");
+    let core_with_hash = ws.write_script(
+        "core-hash",
+        r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{"schema":"ounce.run.v1","engine":"ounce-core","engine_version":"0.10.0","tier":"tier4","silent_fallback":false,"stop_kind":"frame_limit","exit_code":0,"pc":null,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":null,"insns_executed":10,"frames_presented":5,"framebuffer_hash":"fnv1a64:3a00ccf6b6f28ea1","message":null}
+EOF
+echo "PASS: golden output"
+exit 0"#,
+    );
+
+    // Matching hash and stdout pass with exit 0.
+    let ok = hb(&ws)
+        .args([
+            "run",
+            "--expect-hash",
+            "fnv1a64:3a00ccf6b6f28ea1",
+            "--expect-stdout",
+            "golden output",
+            "app.nro",
+        ])
+        .env("OUNCE_CORE_BIN", &core_with_hash)
+        .output()
+        .unwrap();
+    assert_eq!(
+        ok.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+
+    // `=` form works as well.
+    let ok_eq = hb(&ws)
+        .args([
+            "run",
+            "--expect-hash=fnv1a64:3a00ccf6b6f28ea1",
+            "--expect-stdout=PASS:",
+            "app.nro",
+        ])
+        .env("OUNCE_CORE_BIN", &core_with_hash)
+        .output()
+        .unwrap();
+    assert_eq!(
+        ok_eq.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&ok_eq.stderr)
+    );
+
+    // Mismatched hash exits 1 with clear diagnostic.
+    let bad_hash = hb(&ws)
+        .args([
+            "run",
+            "--expect-hash",
+            "fnv1a64:0000000000000000",
+            "app.nro",
+        ])
+        .env("OUNCE_CORE_BIN", &core_with_hash)
+        .output()
+        .unwrap();
+    assert_eq!(bad_hash.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&bad_hash.stderr);
+    assert!(err.contains("assertion failed"), "{err}");
+    assert!(err.contains("fnv1a64:0000000000000000"), "{err}");
+    assert!(err.contains("fnv1a64:3a00ccf6b6f28ea1"), "{err}");
+
+    // Mismatched stdout exits 1 with clear diagnostic (and updates --json exit_code).
+    let bad_stdout = hb(&ws)
+        .args(["run", "--json", "--expect-stdout", "NOT PRESENT", "app.nro"])
+        .env("OUNCE_CORE_BIN", &core_with_hash)
+        .output()
+        .unwrap();
+    assert_eq!(bad_stdout.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&bad_stdout.stderr);
+    assert!(err.contains("expected stdout to contain"), "{err}");
+    let stdout = String::from_utf8_lossy(&bad_stdout.stdout);
+    assert!(stdout.contains("\"exit_code\": 1"), "{stdout}");
+    assert!(
+        stdout.contains("\"stop\": \"assertion_failed\""),
+        "{stdout}"
+    );
+
+    // Null/absent framebuffer_hash fails --expect-hash with exit 1.
+    let core_no_hash = ws.write_script(
+        "core-nohash",
+        r#"cat > "$OUNCE_REPORT_JSON" <<'EOF'
+{"schema":"ounce.run.v1","engine":"ounce-core","engine_version":"0.10.0","tier":"tier4","silent_fallback":false,"stop_kind":"clean_exit","exit_code":0,"pc":null,"opcode":null,"fault_addr":null,"svc_id":null,"break_result":null,"insns_executed":10,"frames_presented":0,"framebuffer_hash":null,"message":null}
+EOF
+exit 0"#,
+    );
+    let missing_hash = hb(&ws)
+        .args([
+            "run",
+            "--expect-hash",
+            "fnv1a64:3a00ccf6b6f28ea1",
+            "app.nro",
+        ])
+        .env("OUNCE_CORE_BIN", &core_no_hash)
+        .output()
+        .unwrap();
+    assert_eq!(missing_hash.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&missing_hash.stderr).contains("got none"),
+        "{}",
+        String::from_utf8_lossy(&missing_hash.stderr)
+    );
+}
+
+#[test]
+fn invalid_expect_flags_are_refused_with_exit_2() {
+    let ws = TempWorkspace::new("expect-bad");
+    for args in [
+        vec!["run", "--expect-hash"],
+        vec!["run", "--expect-hash="],
+        vec!["run", "--expect-stdout"],
+        vec!["run", "--expect-stdout="],
+        vec![
+            "run",
+            "--expect-hash",
+            "fnv1a64:1",
+            "--expect-hash",
+            "fnv1a64:2",
+            "app.nro",
+        ],
+        vec![
+            "run",
+            "--expect-stdout",
+            "a",
+            "--expect-stdout",
+            "b",
+            "app.nro",
+        ],
+    ] {
+        let out = hb(&ws).args(&args).output().unwrap();
+        assert_eq!(out.status.code(), Some(2), "args={args:?}");
+    }
+}

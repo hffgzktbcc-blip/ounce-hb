@@ -27,7 +27,7 @@ Current runner capabilities (see the version-scope note above for what is publis
   - Detects trailing `ASET` asset headers with an embedded RomFS section via `ounce_hb::has_embedded_romfs`.
   - Detects and rejects retail containers with actionable error messages (exit code 2).
 - **Subprocess Runner**:
-  - Executes validated NRO files via an external `ounce-core` binary invoked in headless mode (`--present=headless`).
+  - Executes validated NRO files (`ounce-core run-nro`) and unencrypted homebrew NSO0 modules (`ounce-core run`, staging LZ4-compressed `elf2nso` segments through a clean-room NSO0 decompressor) via an external `ounce-core` binary invoked in headless mode (`--present=headless`). Guest arguments are supported for NROs only; passing guest arguments to an NSO is refused with exit code 2.
   - Resolves `ounce-core` via the `OUNCE_CORE_BIN` environment variable or the host system's `PATH`.
   - Passes through `--cpu <interp|tier3|tier4>` (`--cpu=<interpreter|tier3|tier4>`) and validated `--sdmc <dir>` (`--sdmc=<dir>`, mounting `sdmc:/`) on `run` and `repro`, recording both in `ounce.repro.v1` bundles (unreleased on `main`, post-`v0.1.0`).
   - Captures guest stdout and stderr and prints them when ounce-core exits; the exit status is mapped to the documented ounce-hb exit codes, not forwarded.
@@ -42,8 +42,8 @@ Current runner capabilities (see the version-scope note above for what is publis
 
 ## 3. Current Developmental Limitations
 
-The following features are not yet implemented in M0:
-- **NSO Execution**: While NSO format classification is implemented, running NSO files directly through the runner is not yet supported.
+The following features are not yet implemented or have caveats:
+- **NSO Full Runtime Environment**: Standalone unencrypted NSO0 execution (including LZ4-compressed `elf2nso` outputs) is supported on `main` (post-`v0.2.0`), with a clean-room `libnx` SVC fixture (`tests/fixtures/libnx_nso_hello/`). Guest arguments are not supported for NSOs (exit code 2), and NSOs that rely on full `libnx` crt0 `envSetup` heap/thread-handle bootstrapping require upstream `ounce-core` NSO process-environment setup.
 - **RomFS Mounting (`romfs:/`)**: `ounce_hb::has_embedded_romfs` detects an embedded `ASET` RomFS section in an NRO, and newer `ounce-core` builds mount embedded `ASET` RomFS automatically, but older `ounce-core` releases (`v0.8.x`) do not mount `romfs:/` and `ounce-hb` does not yet expose a `--romfs <dir>` flag for external host folders. On engines without RomFS support, guests that check `romfsInit()` typically abort with `svcBreak` (exit code 13); see [DIAGNOSIS.md](DIAGNOSIS.md#embedded-romfs-and-romfsinit-stops).
 - **Direct Library Integration**: ounce-hb currently runs `ounce-core` via a subprocess. Direct in-process linking is blocked until upstream `ounce-core` exposes a library target (see [OUNCE_CORE_API_NEEDS.md](OUNCE_CORE_API_NEEDS.md)).
 - **Display & Graphics**: Execution is strictly headless (`--present=headless`). There is no virtual display, framebuffer presentation, or GPU pipeline.

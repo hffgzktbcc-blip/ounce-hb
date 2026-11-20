@@ -11,6 +11,7 @@ use std::time::Duration;
 
 pub mod backend;
 pub mod diagnose;
+pub mod nso;
 pub mod report_v1;
 
 pub use backend::{
@@ -137,6 +138,8 @@ pub enum RunError {
     /// A guest argument starting with '-' that ounce-core would silently drop.
     UnsupportedArg(String),
     UnsupportedKind(Kind),
+    /// An NSO image was malformed, failed LZ4 decompression, or was given guest arguments.
+    InvalidNso(String),
     /// `OUNCE_HB_TIMEOUT_SECS` is set to something other than a usable number of seconds.
     BadTimeout(String),
     /// `--cpu` was given an unsupported engine tier name.
@@ -191,12 +194,12 @@ impl fmt::Display for RunError {
                 "guest argument {arg:?} starts with '-'. ounce-core run-nro drops such arguments, so it is refused."
             ),
             RunError::UnsupportedKind(k) => {
-                write!(
-                    f,
-                    "{k:?} execution is not supported yet; only NRO is supported."
-                )
+                write!(f, "{k:?} execution is not supported by this backend.")
             }
-            RunError::BadTimeout(why) | RunError::BadCpu(why) | RunError::BadSdmc(why) => {
+            RunError::InvalidNso(why)
+            | RunError::BadTimeout(why)
+            | RunError::BadCpu(why)
+            | RunError::BadSdmc(why) => {
                 write!(f, "{why}")
             }
             RunError::GuestArgsTooLong { bytes } => write!(
@@ -300,8 +303,10 @@ pub fn run_engine_opts(
     cpu: Option<CpuTier>,
     sdmc: Option<&std::path::Path>,
 ) -> Result<RunOutput, RunError> {
-    if kind != Kind::Nro {
-        return Err(RunError::UnsupportedKind(kind));
+    if kind == Kind::Nso && !args.is_empty() {
+        return Err(RunError::InvalidNso(
+            "NSO programs do not accept guest arguments.".to_string(),
+        ));
     }
     check_guest_args(args)?;
     if let Some(dir) = sdmc {
@@ -327,8 +332,10 @@ pub fn run_engine_trace_opts(
     cpu: Option<CpuTier>,
     sdmc: Option<&std::path::Path>,
 ) -> Result<RunOutput, RunError> {
-    if kind != Kind::Nro {
-        return Err(RunError::UnsupportedKind(kind));
+    if kind == Kind::Nso && !args.is_empty() {
+        return Err(RunError::InvalidNso(
+            "NSO programs do not accept guest arguments.".to_string(),
+        ));
     }
     check_guest_args(args)?;
     if let Some(dir) = sdmc {
@@ -359,7 +366,15 @@ pub fn run_with<B: Backend>(
             let staged = Staged::create(bytes)?;
             backend.run_nro(&staged, args)
         }
-        other => Err(RunError::UnsupportedKind(other)),
+        Kind::Nso => {
+            if !args.is_empty() {
+                return Err(RunError::InvalidNso(
+                    "NSO programs do not accept guest arguments.".to_string(),
+                ));
+            }
+            let staged = Staged::create_nso(bytes)?;
+            backend.run_nso(&staged, args)
+        }
     }
 }
 
@@ -416,20 +431,20 @@ mod tests {
     }
 
     #[test]
-    fn run_refuses_nso_before_looking_for_core() {
-        assert_eq!(
-            run(Kind::Nso, &[], &[]),
-            Err(RunError::UnsupportedKind(Kind::Nso))
-        );
+    fn run_refuses_nso_guest_args_before_looking_for_core() {
+        assert!(matches!(
+            run(Kind::Nso, &[], &["extra".to_string()]),
+            Err(RunError::InvalidNso(_))
+        ));
     }
 
     #[test]
-    fn run_with_passes_the_staged_nro_to_the_backend() {
+    fn run_with_passes_the_staged_nro_and_nso_to_the_backend() {
         struct Echo;
         impl Backend for Echo {
             fn run_nro(&self, program: &Staged, args: &[String]) -> Result<RunOutput, RunError> {
                 let stdout = format!(
-                    "{}|{}",
+                    "nro:{}|{}",
                     std::fs::read(program.path()).unwrap().len(),
                     args.join(",")
                 );
@@ -439,14 +454,23 @@ mod tests {
                     ..RunOutput::default()
                 })
             }
+
+            fn run_nso(&self, program: &Staged, _args: &[String]) -> Result<RunOutput, RunError> {
+                let stdout = format!("nso:{}", std::fs::read(program.path()).unwrap().len());
+                Ok(RunOutput {
+                    exit_code: Some(0),
+                    stdout,
+                    ..RunOutput::default()
+                })
+            }
         }
-        let bytes = with(0x10, b"NRO0", 0x80);
-        let out = run_with(&Echo, Kind::Nro, &bytes, &["x".to_string()]).unwrap();
-        assert_eq!(out.stdout, format!("{}|x", bytes.len()));
-        assert_eq!(
-            run_with(&Echo, Kind::Nso, &bytes, &[]),
-            Err(RunError::UnsupportedKind(Kind::Nso))
-        );
+        let nro_bytes = with(0x10, b"NRO0", 0x80);
+        let out = run_with(&Echo, Kind::Nro, &nro_bytes, &["x".to_string()]).unwrap();
+        assert_eq!(out.stdout, format!("nro:{}|x", nro_bytes.len()));
+
+        let nso_bytes = with(0, b"NSO0", 0x100);
+        let out = run_with(&Echo, Kind::Nso, &nso_bytes, &[]).unwrap();
+        assert_eq!(out.stdout, format!("nso:{}", nso_bytes.len()));
     }
 
     #[test]

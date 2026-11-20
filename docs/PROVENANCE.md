@@ -10,6 +10,7 @@ Add one table row per file. The first column is the repo-relative path in backti
 |---|---|---|---|---|---|
 | `docs/assets/family-banner.jpg` | 002389e90ad3b5622a112a29edab875bdfcbbf54934a66a5954aef216c420b90 | User-provided community infographic banner | N/A (Image) | Generated graphic | CC-BY-4.0 |
 | `tests/fixtures/libnx_hello/libnx_hello.nro` | 9abd6a44cd7a57c9276e8a280a636842c442ee21bc8f6392ad56595b9e825e98 | Original clean-room source: `tests/fixtures/libnx_hello/main.c`, commit `dce0365` ([source](https://github.com/hffgzktbcc-blip/ounce-hb/tree/dce0365/tests/fixtures/libnx_hello)) | devkitA64 r30-1; GCC 16.1.0-1; binutils 2.46.0-1; newlib 4.6.0.20260123-4; libnx 4.12.0-1; elf2nro from switch-tools 1.13.1-1 | `DEVKITPRO=/opt/devkitpro make -C tests/fixtures/libnx_hello clean all` | MIT (fixture source); libnx ISC, newlib permissive notices, GCC runtime exception (linked runtime) |
+| `tests/fixtures/libnx_nso_hello/libnx_nso_hello.nso` | bff3ac1f7318b3f9aeb88430e38846941b5cbd65b9d3e1f5f7c34f7dcde2058e | Original clean-room source: `tests/fixtures/libnx_nso_hello/main.c` | devkitA64 r30-1; GCC 16.1.0-1; binutils 2.46.0-1; newlib 4.6.0.20260123-4; libnx 4.12.0-1; elf2nso from switch-tools 1.13.1-1 | `DEVKITPRO=/opt/devkitpro make -C tests/fixtures/libnx_nso_hello clean all` | MIT (fixture source); libnx ISC (linked SVC wrappers) |
 
 The libnx fixture uses original MIT source committed alongside its build recipe; no external
 sample source or emulator source was used. `check-toolchain.sh` requires the exact installed

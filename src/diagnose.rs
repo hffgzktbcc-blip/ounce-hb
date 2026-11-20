@@ -236,6 +236,7 @@ pub fn from_error(e: &RunError) -> StopReason {
         },
         RunError::UnsupportedArg(_)
         | RunError::UnsupportedKind(_)
+        | RunError::InvalidNso(_)
         | RunError::BadTimeout(_)
         | RunError::BadCpu(_)
         | RunError::BadSdmc(_)

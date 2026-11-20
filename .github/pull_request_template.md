@@ -4,6 +4,11 @@
 ## Motivation & Context
 <!-- Why is this change necessary? What problem does it solve? -->
 
+## Public documentation impact
+<!-- A user-visible change must update its affected README/usage/limits and Unreleased changelog in this PR. -->
+- Docs updated: <!-- relevant files and observable user benefit -->
+<!-- If not needed: Docs: none — internal-only change because ... -->
+
 ## Checks Run
 <!-- State which commands you ran locally and their results. -->
 - [ ] `cargo fmt --all -- --check`

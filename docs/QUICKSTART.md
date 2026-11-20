@@ -5,8 +5,7 @@ turns the stop into a stable exit code. It does not contain the engine.
 `ounce-core` is MIT. `ounce-runtime` is GPL-3.0-or-later and stays a separate
 process.
 
-The commands on this page are on `main` after v0.0.2 (14 Nov 2026). The
-published v0.0.2 archive has `run` only: no `doctor`, no `repro`, no `--auto`.
+These commands are available in the [published v0.2.0 release](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.2.0). For any newer release, open [GitHub Releases/latest](https://github.com/hffgzktbcc-blip/ounce-hb/releases/latest). A command that only exists on `main` is not automatically part of a tagged archive.
 
 ## Build
 
@@ -134,21 +133,14 @@ GitHub Actions, and VS Code `tasks.json` snippets.
 `ounce-hb doctor --json`.
 
 ```yaml
-- uses: hffgzktbcc-blip/ounce-hb/.github/actions/setup-ounce@<commit>
+- uses: hffgzktbcc-blip/ounce-hb/.github/actions/setup-ounce@1ccdfc95259d50e6ca7b6ff660da20138994231a
   with:
-    ounce-hb-version: v0.0.2
-    ounce-core-version: v0.8.2
+    ounce-hb-version: v0.2.0
+    ounce-core-version: v0.10.0
     install-runtime: 'false'
 ```
 
-Do not point this at the published v0.0.2 ounce-hb archive and expect the
-doctor step to pass: that archive has no `doctor` subcommand. Use a commit
-you have built, or wait until v0.1.0 is tagged. On `main` the action installs
-`linux-x86_64`, macOS arm64, and Windows x86_64. It checks checksums for
-ounce-hb and ounce-core. It does not check the ounce-runtime checksum, it has
-no linux-arm64 archive, and the release workflow still triggers on every `v*`
-tag. Those items are open in pull request 40. Do not publish a floating
-`setup-ounce@v1` tag until that trigger change is on `main`.
+**Pinned example (20 November 2026):** the two versions shown above have published archives; the `doctor` command ships in v0.2.0. The action is pinned to a concrete reviewed commit; update that SHA deliberately if adopting later action changes. The current [setup action](../.github/actions/setup-ounce/action.yml) supports Linux x86_64 and ARM64, macOS arm64 and Windows x86_64. It verifies the downloaded HB and Core SHA-256 sidecars. Future release versions must be checked against their own archives before changing this example; do not treat an old compatibility test as proof about newer binaries.
 
 `install-runtime: 'true'` downloads the GPL-3.0-or-later `ounce-runtime`
 archive as a separate binary. ounce-hb does not link it.

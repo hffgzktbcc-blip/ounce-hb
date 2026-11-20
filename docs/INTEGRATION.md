@@ -4,7 +4,7 @@ Copy-paste configuration templates for running unencrypted Nintendo Switch homeb
 
 > **Nominative-Use & Clean-Room Notice:** "Nintendo" and "Nintendo Switch" are registered trademarks of Nintendo Co., Ltd. and Nintendo of America Inc.; "devkitPro", "devkitA64", and "libnx" belong to their respective open-source projects. These names are used strictly for compatibility identification (nominative use). **Never** redistribute `devkitPro`/`libnx` binaries, console keys, firmware, or retail assets in repositories or CI artifacts.
 
-> **Version note:** Published `ounce-hb v0.1.0` includes `run`, `doctor`, `repro`, and `--auto`. Newer CLI flags (`--timeout`, `--json`, `--cpu`, `--sdmc`, `--expect-hash`, `--expect-stdout`) and the `bisect` subcommand are on `main` (post-`v0.1.0`) and require building `ounce-hb` from `main` until the next tagged release.
+> **Version note:** The [published v0.2.0 release](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.2.0) includes `run`, `doctor`, `repro`, `--auto`, `bisect` and the newer `--timeout`, `--json`, `--cpu`, `--sdmc`, `--expect-hash` and `--expect-stdout` options. For future releases, check the [latest release notes](https://github.com/hffgzktbcc-blip/ounce-hb/releases/latest) rather than assuming every change on `main` is published.
 
 ---
 
@@ -87,10 +87,10 @@ jobs:
 
       # Pin a commit SHA for production workflows.
       - name: Install Ounce tools
-        uses: hffgzktbcc-blip/ounce-hb/.github/actions/setup-ounce@main
+        uses: hffgzktbcc-blip/ounce-hb/.github/actions/setup-ounce@1ccdfc95259d50e6ca7b6ff660da20138994231a
         with:
-          ounce-hb-version: v0.1.0
-          ounce-core-version: v0.9.0
+          ounce-hb-version: v0.2.0
+          ounce-core-version: v0.10.0
           install-runtime: 'false'
 
       - name: Run homebrew NRO headlessly
@@ -98,7 +98,7 @@ jobs:
           OUNCE_HB_TIMEOUT_SECS=30 ounce-hb run --backend core build/app.nro
 ```
 
-If your workflow uses post-`v0.1.0` flags (`--expect-hash`, `--expect-stdout`, `--timeout`, `--cpu`, `--sdmc`, or `bisect`), install `ounce-hb` from `main` (`cargo install --git https://github.com/hffgzktbcc-blip/ounce-hb.git --locked`) and pass `install-hb: 'false'` to `setup-ounce`.
+These example tags are intentionally pinned to the releases available on 20 November 2026; they are not a substitute for checking [the latest HB release](https://github.com/hffgzktbcc-blip/ounce-hb/releases/latest) and [Core release](https://github.com/hffgzktbcc-blip/ounce-core/releases/latest). If a new command only exists on `main`, install a reviewed source commit explicitly and set `install-hb: 'false'`; do not present unreleased code as a tagged feature.
 
 ---
 

@@ -7,7 +7,7 @@ that you built yourself from source with [devkitPro](https://devkitpro.org/) and
 ounce-hb runs homebrew through the released [ounce-core](https://github.com/hffgzktbcc-blip/ounce-core)
 command-line tool by default, or a selected engine subprocess, and explains how each run stopped, with stable exit codes.
 
-> **Latest published release: [v0.2.0, 20 November 2026](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.2.0).** The released CLI supervises supported homebrew runs, explains failures, and adds timeout/JSON reporting, toolchain checks, reproduction comparisons and bounded trace diagnostics. The earlier [v0.1.0](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.1.0) remains available for historical comparison. Check [CHANGELOG.md](CHANGELOG.md) and the installed binary before relying on newer `main` features.
+> **Latest published release:** [See GitHub Releases](https://github.com/hffgzktbcc-blip/ounce-hb/releases/latest) for the current tag, downloadable files and release date. This CLI supervises supported open-source homebrew and explains how a run stopped; check [CHANGELOG.md](CHANGELOG.md) and your installed version for the exact available flags. Work on `main` is not necessarily released.
 > See [Usage](#usage), [docs/HOMEBREW_DEVELOPER_GUIDE.md](docs/HOMEBREW_DEVELOPER_GUIDE.md), [docs/LIMITS.md](docs/LIMITS.md), and
 > [docs/OUNCE_CORE_API_NEEDS.md](docs/OUNCE_CORE_API_NEEDS.md).
 
@@ -21,14 +21,14 @@ command-line tool by default, or a selected engine subprocess, and explains how 
 
 ounce-hb is one of four independent, open-source projects sharing an evidence-first philosophy and a community:
 
-| Project | What it is for | When to choose it | Licence | Link |
-|---|---|---|---|---|
-| **ounce-core** | ARM64 execution and verification research engine. Runs programs across three CPU tiers and compares output with real hardware. | You want to check whether a program gives the same result on ARM64 as on hardware, or you want to work on the engines themselves. | MIT | [github.com/hffgzktbcc-blip/ounce-core](https://github.com/hffgzktbcc-blip/ounce-core) |
-| **ounce-hb** (this repo) | Simplified homebrew runner built around Ounce-Core with diagnostics, process safety, and stable exit codes. | You want a simple way to run your own homebrew from a script or terminal and see why a run stopped. | MIT | [github.com/hffgzktbcc-blip/ounce-hb](https://github.com/hffgzktbcc-blip/ounce-hb) |
-| **ounce-runtime** | Experimental performance runtime with native JIT, host GPU presentation, and controller support. | You want to experiment with high performance, visual rendering, or controller input and you accept GPL-3.0-or-later terms. | GPL-3.0-or-later | [github.com/hffgzktbcc-blip/ounce-runtime](https://github.com/hffgzktbcc-blip/ounce-runtime) |
-| **deckstream** | Steam Deck NAS/WebDAV game launcher and streaming-oriented experimentation. | You want an on-demand virtual filesystem for handheld Linux gaming PCs (SteamOS) with Gaming Mode integration. | MIT | [github.com/hffgzktbcc-blip/deckstream](https://github.com/hffgzktbcc-blip/deckstream) |
+**Four independent projects. Choose the job you need done:**
 
-**Independent siblings, clean boundaries.** Each project solves a distinct problem with its own repository, tests, and releases. DeckStream is an independent sibling, not an Ounce-Core derivative; no code flows inappropriately across licensing boundaries (`ounce-core`, `ounce-hb`, and `deckstream` are MIT; `ounce-runtime` is GPL-3.0-or-later).
+- **[Ounce-Core](https://github.com/hffgzktbcc-blip/ounce-core)** checks supported ARM64 programs against recorded hardware references.
+- **[Ounce-HB](https://github.com/hffgzktbcc-blip/ounce-hb)** runs your own open-source homebrew through an engine and explains why it stopped.
+- **[Ounce-Runtime](https://github.com/hffgzktbcc-blip/ounce-runtime)** experiments with faster ARM64 execution, graphics and controller input.
+- **[DeckStream](https://github.com/hffgzktbcc-blip/deckstream)** aims to launch PC games from your NAS/WebDAV storage on Steam Deck; an independent device run is still outstanding.
+
+**[Choose the right Ounce project in one minute](https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/FAMILY.md)** for the first task, limitations, licences and current-release links. These projects have separate evidence and release decisions. DeckStream is not an ARM64 engine, and GPL code is not copied into MIT siblings.
 
 ---
 
@@ -69,7 +69,7 @@ Issues, pull requests, or discussions requesting retail software support, keys, 
 ### Prerequisites
 1. **Rust stable toolchain** (see [rust-toolchain.toml](rust-toolchain.toml)).
 2. **ounce-core CLI binary**: ounce-hb executes validated homebrew via `ounce-core run-nro <app.nro> --present=headless`.
-   - Get the latest published [Ounce-Core v0.10.0](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.10.0) (20 November 2026), or build Ounce-Core from source. **Compatibility-test baseline is separate from the latest release:** this repository's `nightly-parity.yml` and `ounce-core-e2e.yml` workflows currently pin Ounce-Core **v0.8.1**. Their results do not establish compatibility with every later Core release; test the installed pair if you need a specific feature.
+   - Get the [latest published Ounce-Core](https://github.com/hffgzktbcc-blip/ounce-core/releases/latest), or build Ounce-Core from source. **Compatibility-test baseline is separate from the latest release:** this repository's `nightly-parity.yml` and `ounce-core-e2e.yml` workflows currently pin Ounce-Core **v0.8.1**. Their results do not establish compatibility with every later Core release; test the installed pair if you need a specific feature.
    - Ensure `ounce-core` is available on your `PATH`, or specify its path directly via the `OUNCE_CORE_BIN` environment variable (e.g., `export OUNCE_CORE_BIN=/path/to/ounce-core`).
 
 ### Running a Homebrew Program

@@ -4,7 +4,7 @@
 
 Before selecting or starting work, read the **canonical [Ounce Family Nov 2026–Nov 2027 roadmap](https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md)**. It coordinates ounce-core (MIT), ounce-hb (MIT), ounce-runtime (GPL-3.0-or-later), and deckstream (MIT), including cross-repo release, CI, report and compatibility tasks. This repository's local docs/wiki/Roadmap.md is supplementary, not a competing family plan.
 
-**Verify live GitHub state** (current main, open/merged PRs and issues, published releases, CI) before treating a roadmap item, dated plan, handoff or checklist as unfinished. Published ounce-hb v0.1.0, ounce-core v0.9.0 and ounce-runtime v0.6.0 must not be retagged or reimplemented. Record changed task status with evidence in the active source, not another dated handoff. Current user instructions determine authorized scope; historical notes do not create new assignments. Respect license isolation: share CLI/JSON evidence and use subprocesses, never port GPL runtime code into MIT projects.
+**Verify live GitHub state** (current main, open/merged PRs and issues, published releases, CI) before treating a roadmap item, dated plan, handoff or checklist as unfinished. Check the live [HB](https://github.com/hffgzktbcc-blip/ounce-hb/releases/latest), [Core](https://github.com/hffgzktbcc-blip/ounce-core/releases/latest) and [Runtime](https://github.com/hffgzktbcc-blip/ounce-runtime/releases/latest) release pages before making a published-version claim; never re-tag or reimplement shipped work. Record changed task status with evidence in the active source, not another dated handoff. Current user instructions determine authorized scope; historical notes do not create new assignments. Respect license isolation: share CLI/JSON evidence and use subprocesses, never port GPL runtime code into MIT projects.
 
 Guidelines for autonomous agents and contributors working in this repository.
 
@@ -20,6 +20,7 @@ Guidelines for autonomous agents and contributors working in this repository.
 ---
 
 ## 2. Agent Workflow
+- **Public docs ship with the change:** when a PR alters runnable behaviour, flags, installation or diagnostic output, update the affected README/usage, limits and `Unreleased` changelog in that same PR. Follow the [family public docs contract](https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/PUBLIC_DOCS_CONTRACT.md). Explain what users can do in active verbs; do not turn old test numbers into new results. If no public docs update is needed, state `Docs: none — <reason>` in the PR body so the CI guard records the decision.
 - **Orientation**: Direction for the family is the [ounce-core one-year roadmap](https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md); this repo's milestones are [docs/wiki/Roadmap.md](docs/wiki/Roadmap.md) and releases are in [CHANGELOG.md](CHANGELOG.md). Python script tests live in `scripts/test_*.py`.
 - **Inspect First**: Read relevant code and documentation before modifying files.
 - **Scope Discipline**: Stay within your assigned scope. Preserve unrelated files and do not change files outside the task. `src/`, `tests/` and `.github/workflows/` are in scope when the task needs them.

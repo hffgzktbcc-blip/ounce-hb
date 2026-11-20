@@ -29,7 +29,7 @@ reuse one.
 |---|---|---|
 | `0` | clean exit | The guest reached svcExitProcess and ounce-core exited `0`. |
 | `1` | unrecognised | ounce-core stopped in a way this file does not list. Its output is printed unchanged and nothing is inferred from it. Also used when ounce-core was killed by a signal with no recognised line. |
-| `2` | refused | The request was refused before ounce-core ran: a guest argument starting with `-`, guest arguments longer than 16 KiB together (see [Guest-argument limit](#guest-argument-limit)), an unsupported NSO kind, a malformed `OUNCE_HB_TIMEOUT_SECS`, a word between the program path and `--` (see [Command line](#command-line)), or an input that is not an unencrypted NRO (also `2` for the input checks that run before this step). |
+| `2` | refused | The request was refused before ounce-core ran: guest arguments longer than 16 KiB together (see [Guest-argument limit](#guest-argument-limit)), an unsupported NSO kind, a malformed `OUNCE_HB_TIMEOUT_SECS`, a word or dashed flag given without `--` (see [Command line](#command-line)), or an input that is not an unencrypted NRO (also `2` for the input checks that run before this step). |
 | `3` | core missing | No ounce-core binary: `OUNCE_CORE_BIN` is unset or wrong, and no `ounce-core` is on `PATH`. |
 | `4` | timeout | ounce-core ran past the wall-clock limit (60 seconds, or `OUNCE_HB_TIMEOUT_SECS`) and was killed. |
 | `5` | host I/O | ounce-hb could not write its private copy of the program, or could not start or wait on ounce-core. |

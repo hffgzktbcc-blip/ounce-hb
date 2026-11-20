@@ -86,6 +86,11 @@ jobs:
           PYTHON=$(command -v python3 || command -v python)
           "$PYTHON" -m unittest discover -s scripts -p 'test_*.py' -v
 
+      - name: Action pin check
+        run: |
+          PYTHON=$(command -v python3 || command -v python)
+          "$PYTHON" scripts/check_action_pins.py
+
       - name: Toolchain
         if: needs.changes.outputs.code == 'true'
         run: |

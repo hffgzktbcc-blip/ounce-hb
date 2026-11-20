@@ -39,8 +39,9 @@ or non-directory path is refused with exit 2). Use `--expect-hash <hash>` and/or
 `--expect-stdout <substring>` to assert expected framebuffer hashes or stdout
 lines in CI and Makefiles (exiting `1` on mismatch when the run would otherwise
 succeed). The wall clock limit is 60 seconds, or `--timeout <secs>` /
-`OUNCE_HB_TIMEOUT_SECS` (up to 86400). Guest arguments go after `--` and must
-not start with `-`.
+`OUNCE_HB_TIMEOUT_SECS` (up to 86400). Guest arguments (including dashed flags
+like `--max-frames 5`) go after `--`; arguments given without `--` are refused
+with exit 2.
 
 ```sh
 OUNCE_HB_TIMEOUT_SECS=15 ./target/release/ounce-hb run path/to/app.nro

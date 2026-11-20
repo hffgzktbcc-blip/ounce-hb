@@ -19,7 +19,7 @@ runner = "ounce-hb run --backend core --timeout 30"
 ```
 
 Notes:
-- Keep runner options before the `.nro` path. `ounce-hb` forwards positional guest arguments after `--` and refuses guest arguments starting with `-` (working around `ounce-core #418`).
+- Keep runner options before the `.nro` path. `ounce-hb` forwards guest arguments (including dashed flags) verbatim after `--` and refuses unexpected arguments given without `--` (exit 2).
 - Add `--expect-stdout "PASS"` or `--expect-hash fnv1a64:...` if you want `cargo run` / `cargo nx run` to assert expected output automatically.
 
 ---

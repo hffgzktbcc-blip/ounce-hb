@@ -1151,8 +1151,8 @@ fn shared_refusals_host_io_and_timeout_parity() {
     ] {
         for (label, extra_args, timeout_override) in [
             (
-                "leading-dash-arg",
-                vec!["run", "app.nro", "--backend", backend, "--", "-gui"],
+                "leading-dash-arg-without-separator",
+                vec!["run", "app.nro", "--backend", backend, "-gui"],
                 None,
             ),
             (

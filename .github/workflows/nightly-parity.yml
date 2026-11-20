@@ -26,13 +26,13 @@ jobs:
     timeout-minutes: 60
     steps:
       # actions/checkout v7.0.1; full commit SHA verified against the upstream release tag.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       # The ounce-core source at the same tag, read for the corpus registry (the exit-code table comes from ounce-hb).
       # actions/checkout v7.0.1 (see above).
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: hffgzktbcc-blip/ounce-core
           ref: ${{ env.CORE_TAG }}
@@ -117,7 +117,7 @@ jobs:
       - name: Upload the report
         # actions/upload-artifact v7.0.2; full commit SHA verified against the upstream release tag.
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: corpus-parity-report
           path: ${{ runner.temp }}/parity/

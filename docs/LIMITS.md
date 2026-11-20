@@ -32,7 +32,7 @@ Current runner capabilities (see the version-scope note above for what is publis
   - Passes through `--cpu <interp|tier3|tier4>` (`--cpu=<interpreter|tier3|tier4>`) and validated `--sdmc <dir>` (`--sdmc=<dir>`, mounting `sdmc:/`) on `run` and `repro`, recording both in `ounce.repro.v1` bundles (unreleased on `main`, post-`v0.1.0`).
   - Captures guest stdout and stderr and prints them when ounce-core exits; the exit status is mapped to the documented ounce-hb exit codes, not forwarded.
   - Enforces a 60-second wall-clock timeout on guest runs. `OUNCE_HB_TIMEOUT_SECS` overrides it (greater than 0, at most 86400); see [DIAGNOSIS.md](DIAGNOSIS.md#timeout).
-  - Refuses guest arguments starting with `-` to avoid silent argument dropping by upstream `ounce-core`.
+  - Forwards guest arguments verbatim after `--` (including dashed arguments such as `--max-frames 5`, passed to the backend after `--`; older `ounce-core v0.8.x` releases drop dashed arguments, while `ounce-core` `main` forwards them). Dashed or positional guest arguments given without `--` are refused with exit code 2.
   - Explains abnormal stops (unimplemented instruction, memory fault, svcBreak, unhandled SVC, budget, loader error, timeout, missing ounce-core) with a documented exit code per category; see [DIAGNOSIS.md](DIAGNOSIS.md).
 - **Quality & Safety Invariants**:
   - Enforces `#![forbid(unsafe_code)]` in the main crate.

@@ -8,21 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.2.0] - 2026-11-20
+
 ### Added
-- `ounce-hb run` and `ounce-hb repro` accept `--cpu <interp|tier3|tier4>` and `--sdmc <dir>`, forwarding `--cpu=<interpreter|tier3|tier4>` and `--sdmc=<dir>` to the backend and recording `cpu` and `sdmc` in `ounce.repro.v1` bundles.
-- `ounce.run.v1` reports are parsed for the new `frames_presented` and `framebuffer_hash` fields (from ounce-core after its #460; engines that omit them read as 0 / none). `ounce.repro.v1` bundles now record both per engine, `ounce-hb repro` fails when the manifest's `core.framebuffer_hash` or `core.frames_presented` differs from the run (checked only when the manifest has them), and `ounce-hb run --auto` escalates and reports `Runtime Divergence` (writing `ounce-repro.json`) when both engines emit non-null `framebuffer_hash` values that differ.
-- `ounce-hb run --timeout <secs>`: per-run wall-clock limit (overrides `OUNCE_HB_TIMEOUT_SECS`); exceeding it exits 4.
-- `ounce-hb run --expect-hash <hash>` and `--expect-stdout <substring>`: assert golden framebuffer hashes or stdout substrings directly on `run` (exiting `1` on mismatch).
-- `ounce-hb bisect`: `git bisect run` wrapper around `repro` mapping pass/fail to `0`/`1` and infrastructure/refusal exits (`2`–`5`) to `125`.
-- `ounce-hb diff-trace`: compares `ounce.trace.v1` (`OUNCE_TRACE_SUMMARY`) summaries between `ounce-runtime` and `ounce-core`, reporting either agreement (`0`) or the first differing step/field (`1`).
-- CI divergence summaries: when `GITHUB_STEP_SUMMARY` is set, `run --auto`, `repro`, and `diff-trace` append a Markdown table (`Program`, `Stop Kind`, `Exit Code`, `Instructions`, `Frames`, `Framebuffer Hash`) on divergence or failure.
-- `ounce_hb::has_embedded_romfs`: detects a trailing `ASET` asset section with a non-zero embedded RomFS section in NRO images; documented missing-RomFS `svcBreak` stops in `docs/DIAGNOSIS.md` and `docs/LIMITS.md`.
-- `docs/INTEGRATION.md`: copy-paste integration snippets for `cargo-nx`, `devkitA64` Makefiles, GitHub Actions (`setup-ounce`), and VS Code `tasks.json` + `problemMatcher` crash navigation.
-- `ounce-hb run --json`: prints one `ounce.hb.run.v1` object on stdout (exit code, stop label, guest exit code, captured output). Not supported with `--auto` yet.
-- `ounce-hb doctor` (text and `--json`) now reports `DEVKITPRO`, `devkitA64` and `cargo-nx`. They are only needed to build homebrew, so they do not change doctor's exit code.
+- **Engine & mount flags (`--cpu`, `--sdmc`)**: `ounce-hb run`, `repro`, `bisect`, and `diff-trace` accept `--cpu <interp|tier3|tier4>` and `--sdmc <dir>`, forwarding `--cpu=<interpreter|tier3|tier4>` and `--sdmc=<dir>` to the backend and recording both in `ounce.repro.v1` bundles (#68).
+- **Per-run timeout & machine-readable output**: `ounce-hb run --timeout <secs>` overrides `OUNCE_HB_TIMEOUT_SECS` (exit `4` on timeout), and `ounce-hb run --json` prints one `ounce.hb.run.v1` object on stdout (#45).
+- **Doctor toolchain checks**: `ounce-hb doctor` (text and `--json`) reports `DEVKITPRO`, `devkitA64`, and `cargo-nx` availability without altering its exit code (#45).
+- **Framebuffer hash & frame-count parity**: `ounce.run.v1` parsing extracts `frames_presented` and `framebuffer_hash`; `ounce.repro.v1` and `ounce-hb repro` record and verify both per engine, and `ounce-hb run --auto` escalates and reports `Runtime Divergence` (writing `ounce-repro.json`) when both engines emit differing non-null `framebuffer_hash` values (#50, #69).
+- **CI assertions & bisection**: `ounce-hb run --expect-hash <hash>` and `--expect-stdout <substring>` assert golden outputs directly on `run` (exiting `1` on mismatch), and `ounce-hb bisect` wraps `repro` for `git bisect run` (mapping infrastructure/refusal exits `2`–`5` to `125`) (#70).
+- **Differential tracing & CI summaries**: `ounce-hb diff-trace` compares `ounce.trace.v1` (`OUNCE_TRACE_SUMMARY`) summaries between `ounce-runtime` and `ounce-core` (`0` on agreement, `1` with first differing step/field), and `run --auto`, `repro`, and `diff-trace` append a Markdown divergence table to `$GITHUB_STEP_SUMMARY` when set (#71).
+- **Embedded RomFS detection**: `ounce_hb::has_embedded_romfs` detects trailing `ASET` asset sections with non-zero embedded RomFS data in NRO images, with missing-RomFS `svcBreak` diagnostics documented in `docs/DIAGNOSIS.md` and `docs/LIMITS.md` (#71).
+- **Dashed guest argument forwarding (`--`)**: `Subprocess::run_nro` forwards `-- <guest args>` to the backend when any guest argument after `--` starts with `-` (e.g. `ounce-hb run app.nro -- --max-frames 5`), while continuing to refuse unexpected or dashed arguments given without `--` with exit code `2` (#72, closes #64).
+- **Supply-chain hardening (Q3)**: Added `scripts/check_action_pins.py` (enforced in `ci.yml`, verifying all 26 GitHub Actions `uses:` references are pinned to 40-char commit SHAs with `# vX.Y.Z` comments) and pure-stdlib SPDX 2.3 SBOM generation (`scripts/generate_sbom.py`, wired into `release.yml` and covered by `SHA256SUMS`) (#72).
+- **Developer integration docs**: Added `docs/INTEGRATION.md` with copy-paste snippets for `cargo-nx`, `devkitA64` Makefiles, GitHub Actions (`setup-ounce`), and VS Code `tasks.json` + `problemMatcher` (#70).
 
 ### Changed
-- Replaced the flat substring scan in `src/report_v1.rs` (`ReportV1::parse` and `ReproManifest::parse`) with a zero-dependency, `#![forbid(unsafe_code)]` recursive-descent JSON parser supporting signed `i32` `exit_code`, nested objects, string escapes, string arrays, booleans, and `null`.
+- **JSON parser hardening**: Replaced the flat substring scan in `src/report_v1.rs` (`ReportV1::parse` and `ReproManifest::parse`) with a zero-dependency, `#![forbid(unsafe_code)]` recursive-descent JSON parser supporting signed `i32` `exit_code`, nested objects, string escapes, string arrays, booleans, and `null` (#69).
+- **CI ergonomics**: Added job timeouts (#65), `help wanted` self-assignment in the claim bot (#66), and a docs-only fast path in `ci.yml` (#67).
 
 ---
 

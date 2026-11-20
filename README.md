@@ -7,7 +7,7 @@ that you built yourself from source with [devkitPro](https://devkitpro.org/) and
 ounce-hb runs homebrew through the released [ounce-core](https://github.com/hffgzktbcc-blip/ounce-core)
 command-line tool by default, or a selected engine subprocess, and explains how each run stopped, with stable exit codes.
 
-> **Status: [v0.1.0 published 16 November 2026](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.1.0).** The released CLI validates input formats, rejects out-of-scope containers and runs supported NROs through a supervised engine subprocess. The source on `main` may have newer unreleased improvements; consult [CHANGELOG.md](CHANGELOG.md) before assuming a command exists in the release archive.
+> **Latest published release: [v0.2.0, 20 November 2026](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.2.0).** The released CLI supervises supported homebrew runs, explains failures, and adds timeout/JSON reporting, toolchain checks, reproduction comparisons and bounded trace diagnostics. The earlier [v0.1.0](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.1.0) remains available for historical comparison. Check [CHANGELOG.md](CHANGELOG.md) and the installed binary before relying on newer `main` features.
 > See [Usage](#usage), [docs/HOMEBREW_DEVELOPER_GUIDE.md](docs/HOMEBREW_DEVELOPER_GUIDE.md), [docs/LIMITS.md](docs/LIMITS.md), and
 > [docs/OUNCE_CORE_API_NEEDS.md](docs/OUNCE_CORE_API_NEEDS.md).
 
@@ -69,7 +69,7 @@ Issues, pull requests, or discussions requesting retail software support, keys, 
 ### Prerequisites
 1. **Rust stable toolchain** (see [rust-toolchain.toml](rust-toolchain.toml)).
 2. **ounce-core CLI binary**: ounce-hb executes validated homebrew via `ounce-core run-nro <app.nro> --present=headless`.
-   - Obtain a pre-built binary from the GitHub releases of [hffgzktbcc-blip/ounce-core](https://github.com/hffgzktbcc-blip/ounce-core/releases) (currently v0.9.0; v0.8.1 is the version nightly CI tests against), or build from source from the [ounce-core repository](https://github.com/hffgzktbcc-blip/ounce-core).
+   - Get the latest published [Ounce-Core v0.10.0](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.10.0) (20 November 2026), or build Ounce-Core from source. **Compatibility-test baseline is separate from the latest release:** this repository's `nightly-parity.yml` and `ounce-core-e2e.yml` workflows currently pin Ounce-Core **v0.8.1**. Their results do not establish compatibility with every later Core release; test the installed pair if you need a specific feature.
    - Ensure `ounce-core` is available on your `PATH`, or specify its path directly via the `OUNCE_CORE_BIN` environment variable (e.g., `export OUNCE_CORE_BIN=/path/to/ounce-core`).
 
 ### Running a Homebrew Program

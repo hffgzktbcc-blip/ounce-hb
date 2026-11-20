@@ -140,7 +140,7 @@ GitHub Actions, and VS Code `tasks.json` snippets.
     install-runtime: 'false'
 ```
 
-**Pinned example (20 November 2026):** the two versions shown above have published archives; the `doctor` command ships in v0.2.0. The action is pinned to a concrete reviewed commit; update that SHA deliberately if adopting later action changes. The current [setup action](../../.github/actions/setup-ounce/action.yml) supports Linux x86_64 and ARM64, macOS arm64 and Windows x86_64. It verifies the downloaded HB and Core SHA-256 sidecars. Future release versions must be checked against their own archives before changing this example; do not treat an old compatibility test as proof about newer binaries.
+**Pinned example (20 November 2026):** the two versions shown above have published archives; the `doctor` command ships in v0.2.0. The action is pinned to a concrete reviewed commit; update that SHA deliberately if adopting later action changes. The current [setup action](../.github/actions/setup-ounce/action.yml) supports Linux x86_64 and ARM64, macOS arm64 and Windows x86_64. It verifies the downloaded HB and Core SHA-256 sidecars. Future release versions must be checked against their own archives before changing this example; do not treat an old compatibility test as proof about newer binaries.
 
 `install-runtime: 'true'` downloads the GPL-3.0-or-later `ounce-runtime`
 archive as a separate binary. ounce-hb does not link it.

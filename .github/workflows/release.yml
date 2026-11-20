@@ -67,6 +67,12 @@ jobs:
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
 
+      - name: Generate SBOM (SPDX 2.3)
+        shell: bash
+        run: |
+          PYTHON=$(command -v python3 || command -v python)
+          "$PYTHON" scripts/generate_sbom.py --target ${{ matrix.target }} --output ounce-hb-${{ matrix.target }}.spdx.json
+
       - name: Package archive (Unix)
         if: runner.os != 'Windows'
         shell: bash
@@ -102,6 +108,7 @@ jobs:
           path: |
             ${{ matrix.archive_name }}
             ${{ matrix.archive_name }}.sha256
+            ounce-hb-${{ matrix.target }}.spdx.json
           if-no-files-found: error
 
   publish:
@@ -128,7 +135,7 @@ jobs:
       - name: Generate archive checksums (SHA256SUMS)
         run: |
           cd dist
-          sha256sum *.tar.gz *.zip > SHA256SUMS
+          sha256sum *.tar.gz *.zip *.spdx.json > SHA256SUMS
 
       - name: Publish draft release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4

@@ -46,7 +46,7 @@ jobs:
         run: git config --global core.autocrlf false
 
       # actions/checkout v7.0.1; same pinned SHA as ci.yml.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Download ounce-core and verify its sha256

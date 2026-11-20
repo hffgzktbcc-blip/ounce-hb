@@ -535,16 +535,35 @@ fn signal_killed_ounce_core_is_unrecognised_exit_1() {
 #[test]
 fn refused_guest_argument_exits_2_without_core() {
     let dir = work_dir("refused");
-    // The guest-argument refusal happens before ounce-core starts, so any existing file will do here.
+    // Dashed arguments without `--` are refused before ounce-core starts, so any existing file works here.
     let existing = std::env::current_exe().unwrap();
     let out = run_hb(
         &dir,
         &nro(&[MOV_W0_0, SVC_EXIT_PROCESS], None),
         &existing,
         &[],
-        &["--", "-gui"],
+        &["-gui"],
     );
-    expect_stop_refused(&out, 2, "starts with '-'");
+    expect_stop_refused(&out, 2, "after '--'");
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn dashed_guest_arguments_after_separator_run_cleanly() {
+    let Some(core) = core_bin("dashed_guest_arguments_after_separator_run_cleanly") else {
+        return;
+    };
+    let dir = work_dir("dashed-guest");
+    let out = run_hb(
+        &dir,
+        &nro(&[MOV_W0_0, SVC_EXIT_PROCESS], None),
+        &core,
+        &[],
+        &["--", "--max-frames", "5"],
+    );
+    let err = text(&out.stderr);
+    assert_eq!(out.status.code(), Some(0), "stderr:\n{err}");
+    assert!(text(&out.stdout).contains("[VM] Process exited gracefully (svcExitProcess)."));
     let _ = fs::remove_dir_all(dir);
 }
 

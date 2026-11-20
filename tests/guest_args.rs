@@ -150,6 +150,89 @@ fn argument_over_the_limit_is_refused_before_ounce_core_starts() {
     let _ = fs::remove_dir_all(dir);
 }
 
+/// A stand-in ounce-core that prints its received arguments and exits cleanly, so we can verify
+/// exact `--` forwarding on all platforms without depending on a specific ounce-core release.
+#[cfg(unix)]
+fn echo_args_core(dir: &Path) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let core = dir.join("ounce-core-echo");
+    fs::write(
+        &core,
+        "#!/bin/sh\nfor a in \"$@\"; do printf 'ARG:%s\\n' \"$a\"; done\nprintf '[VM] Process exited gracefully (svcExitProcess).\\n'\nexit 0\n",
+    )
+    .unwrap();
+    fs::set_permissions(&core, fs::Permissions::from_mode(0o755)).unwrap();
+    core
+}
+
+#[cfg(windows)]
+fn echo_args_core(dir: &Path) -> PathBuf {
+    let core = dir.join("ounce-core-echo.cmd");
+    fs::write(
+        &core,
+        "@echo off\r\n:loop\r\nif \"%~1\"==\"\" goto done\r\necho ARG:%~1\r\nshift\r\ngoto loop\r\n:done\r\necho [VM] Process exited gracefully (svcExitProcess).\r\nexit /b 0\r\n",
+    )
+    .unwrap();
+    core
+}
+
+#[test]
+fn dashed_guest_arguments_after_separator_are_forwarded_verbatim() {
+    let dir = work_dir("dashed-forward");
+    let nro_path = dir.join("program.nro");
+    fs::write(&nro_path, nro(&[MOV_W0_0, SVC_EXIT_PROCESS])).unwrap();
+
+    let core = echo_args_core(&dir);
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .env(CORE_BIN_ENV, &core)
+        .envs(temp_dir_env(&dir.join("tmp")))
+        .arg("run")
+        .arg(&nro_path)
+        .args(["--", "--max-frames", "5", "-v"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(0), "stderr:\n{stderr}");
+    let received: Vec<&str> = stdout
+        .lines()
+        .filter_map(|l| l.strip_prefix("ARG:"))
+        .collect();
+    let sep = received
+        .iter()
+        .position(|a| *a == "--")
+        .unwrap_or_else(|| panic!("expected '--' separator in backend argv: {received:?}"));
+    assert_eq!(&received[sep + 1..], &["--max-frames", "5", "-v"]);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn dashed_argument_without_separator_is_refused_before_ounce_core_starts() {
+    let dir = work_dir("dashed-refused");
+    let nro_path = dir.join("program.nro");
+    fs::write(&nro_path, nro(&[MOV_W0_0, SVC_EXIT_PROCESS])).unwrap();
+
+    let marker = dir.join("ounce-core-was-started");
+    let core = marker_core(&dir, &marker);
+
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-hb"))
+        .env(CORE_BIN_ENV, &core)
+        .envs(temp_dir_env(&dir.join("tmp")))
+        .arg("run")
+        .arg(&nro_path)
+        .args(["--max-frames", "5"])
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "stderr:\n{err}");
+    assert!(err.contains("after '--'"), "{err}");
+    assert!(
+        !marker.exists(),
+        "ounce-core was started for a dashed argument without '--'"
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
 #[test]
 fn limit_is_counted_per_argument_with_its_terminator() {
     // Many short arguments count the same as one long one: bytes plus one NUL each.

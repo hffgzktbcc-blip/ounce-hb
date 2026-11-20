@@ -190,7 +190,7 @@ pub trait Backend {
     fn run_nro(&self, program: &Staged, args: &[String]) -> Result<RunOutput, RunError>;
 }
 
-/// Runs an engine CLI as a child process using the common protocol: `ounce-core run-nro <nro> --present=headless [--cpu=...] [--sdmc=...] [args]`.
+/// Runs an engine CLI as a child process using the common protocol: `ounce-core run-nro <nro> --present=headless [--cpu=...] [--sdmc=...] [--] [args]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Subprocess {
     bin: PathBuf,
@@ -229,10 +229,6 @@ impl Subprocess {
 
 impl Backend for Subprocess {
     fn run_nro(&self, program: &Staged, args: &[String]) -> Result<RunOutput, RunError> {
-        // ounce-core drops every argument that starts with '-' without saying so. Refuse instead.
-        if let Some(bad) = args.iter().find(|a| a.starts_with('-')) {
-            return Err(RunError::UnsupportedArg(bad.clone()));
-        }
         if let Some(ref dir) = self.sdmc {
             validate_sdmc_dir(dir)?;
         }
@@ -245,6 +241,9 @@ impl Backend for Subprocess {
         }
         if let Some(ref dir) = self.sdmc {
             cmd.arg(format!("--sdmc={}", dir.display()));
+        }
+        if args.iter().any(|a| a.starts_with('-')) {
+            cmd.arg("--");
         }
         cmd.args(args)
             .env("OUNCE_REPORT_JSON", &report_path)
@@ -837,12 +836,32 @@ mod tests {
         assert!(!path.exists());
     }
 
+    #[cfg(unix)]
     #[test]
-    fn refuses_guest_args_that_ounce_core_would_drop() {
-        let bin = Subprocess::new(PathBuf::from("/nonexistent/ounce-core"), DEFAULT_TIMEOUT);
+    fn forwards_dashed_guest_args_after_separator() {
+        let bin = fake_core("echo \"out:$*\"; exit 0");
+        let runner = Subprocess::new(bin.clone(), Duration::from_secs(30));
         let staged = Staged::create(b"x").unwrap();
-        let e = bin.run_nro(&staged, &["--gui".to_string()]).unwrap_err();
-        assert_eq!(e, RunError::UnsupportedArg("--gui".to_string()));
+        let out = runner
+            .run_nro(
+                &staged,
+                &[
+                    "--max-frames".to_string(),
+                    "5".to_string(),
+                    "-v".to_string(),
+                ],
+            )
+            .unwrap();
+        assert_eq!(out.exit_code, Some(0));
+        assert!(
+            out.stdout.contains(&format!(
+                "out:run-nro {} --present=headless -- --max-frames 5 -v",
+                staged.path().display()
+            )),
+            "{}",
+            out.stdout
+        );
+        let _ = fs::remove_dir_all(bin.parent().unwrap());
     }
 
     #[test]

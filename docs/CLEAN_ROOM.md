@@ -68,3 +68,14 @@ Clean-room and provenance rules are enforced through automated tooling:
   - Prohibited file extensions (`.nsp`, `.xci`, `.nca`, `.keys`, `.firmware`).
   - Code patterns associated with key derivation or retail container decryption.
 - The binary provenance register is maintained in [docs/PROVENANCE.md](PROVENANCE.md).
+
+---
+
+## 6. Cross-Repository & Ounce Family Boundaries
+
+`ounce-hb` is part of the four-repository Ounce family (`ounce-core`, `ounce-hb`, `ounce-runtime`, `deckstream`). Each repository enforces its own license and source boundary:
+
+- **Subprocess isolation**: `ounce-hb` (MIT, `#![forbid(unsafe_code)]`) never links `ounce-core` (MIT) or `ounce-runtime` (GPL-3.0-or-later) in-process. Both engines are invoked strictly as external subprocesses (`--backend core|runtime|auto|path`).
+- **One-way license boundary**: Do not copy GPL-3.0-or-later code from `ounce-runtime` into MIT `ounce-hb` or `ounce-core`. Cross-engine observations (such as `ounce-hb run --auto` repro manifests or `diff-trace` divergence reports) may be shared one-way as factual bug reports.
+- **Distinct source policies**: `ounce-core` maintains its own sources and legal guardrails policy ([ounce-core `docs/CLEAN_ROOM.md`](https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/CLEAN_ROOM.md), allowing attributed MIT ports). `ounce-hb` itself remains strictly clean-room under Sections 1–4 above (public specifications, switchbrew wiki, devkitPro/libnx, and synthetic fixtures only).
+- **Shared non-negotiable legal boundary**: Across all Ounce repositories, console keys, firmware, retail containers (`NSP`/`XCI`/`NCA`), leaked SDK material, and DRM circumvention are permanently prohibited.

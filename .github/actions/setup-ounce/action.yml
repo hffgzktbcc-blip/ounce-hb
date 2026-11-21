@@ -11,11 +11,11 @@ inputs:
     required: false
     default: 'true'
   ounce-hb-version:
-    description: Release tag for ounce-hb (e.g. v0.0.2 or latest)
+    description: Release tag for ounce-hb (e.g. v0.2.0 or latest)
     required: false
     default: latest
   ounce-core-version:
-    description: Release tag for ounce-core (e.g. v0.8.2 or latest)
+    description: Release tag for ounce-core (e.g. v0.10.0 or latest)
     required: false
     default: latest
   install-runtime:
@@ -25,7 +25,7 @@ inputs:
     required: false
     default: 'false'
   ounce-runtime-version:
-    description: Release tag for ounce-runtime (e.g. v0.5.0 or latest)
+    description: Release tag for ounce-runtime (e.g. v0.7.0 or latest)
     required: false
     default: latest
 

@@ -1161,8 +1161,8 @@ fn shared_refusals_host_io_and_timeout_parity() {
                 None,
             ),
             (
-                "nso-refused",
-                vec!["run", "app.nso", "--backend", backend],
+                "nso-guest-args-refused",
+                vec!["run", "app.nso", "--backend", backend, "--", "extra"],
                 None,
             ),
             (

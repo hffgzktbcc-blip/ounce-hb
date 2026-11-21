@@ -7,10 +7,10 @@ use std::time::Duration;
 
 const USAGE: &str = "\
 usage:
-  ounce-hb run [--backend <core|runtime|auto|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] [--auto] [--timeout <secs>] [--json] [--expect-hash <hash>] [--expect-stdout <text>] <file.nro> [-- guest args...]
+  ounce-hb run [--backend <core|runtime|auto|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] [--auto] [--timeout <secs>] [--json] [--expect-hash <hash>] [--expect-stdout <text>] <file.nro|file.nso> [-- guest args...]
   ounce-hb repro [--backend <core|runtime|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] <bundle.json|dir>
   ounce-hb bisect [--backend <core|runtime|path>] [--cpu <interp|tier3|tier4>] [--sdmc <dir>] <bundle.json|dir>
-  ounce-hb diff-trace [--cpu <interp|tier3|tier4>] [--sdmc <dir>] [--timeout <secs>] <file.nro> [-- guest args...]
+  ounce-hb diff-trace [--cpu <interp|tier3|tier4>] [--sdmc <dir>] [--timeout <secs>] <file.nro|file.nso> [-- guest args...]
   ounce-hb doctor [--json]";
 
 enum Action<'a> {

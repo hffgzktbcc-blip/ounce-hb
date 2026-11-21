@@ -184,13 +184,22 @@ impl RunOutput {
     }
 }
 
-/// Runs one staged NRO. The program's bytes already passed `classify` and live in a private
+/// Runs one staged NRO or NSO. The program's bytes already passed `classify` and live in a private
 /// directory that only ounce-hb writes to (see [`Staged`]).
 pub trait Backend {
     fn run_nro(&self, program: &Staged, args: &[String]) -> Result<RunOutput, RunError>;
+
+    /// Runs a staged uncompressed NSO0 module. Custom backends that only implement NRO execution
+    /// inherit the default refusal.
+    fn run_nso(&self, program: &Staged, args: &[String]) -> Result<RunOutput, RunError> {
+        let _ = (program, args);
+        Err(RunError::UnsupportedKind(crate::Kind::Nso))
+    }
 }
 
-/// Runs an engine CLI as a child process using the common protocol: `ounce-core run-nro <nro> --present=headless [--cpu=...] [--sdmc=...] [--] [args]`.
+/// Runs an engine CLI as a child process using the common protocol:
+/// `ounce-core run-nro <nro> --present=headless [--cpu=...] [--sdmc=...] [--] [args]` for NROs and
+/// `ounce-core run <nso> --present=headless [--cpu=...] [--sdmc=...]` for NSOs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Subprocess {
     bin: PathBuf,
@@ -227,15 +236,20 @@ impl Subprocess {
     }
 }
 
-impl Backend for Subprocess {
-    fn run_nro(&self, program: &Staged, args: &[String]) -> Result<RunOutput, RunError> {
+impl Subprocess {
+    fn run_subcommand(
+        &self,
+        subcommand: &str,
+        program: &Staged,
+        args: &[String],
+    ) -> Result<RunOutput, RunError> {
         if let Some(ref dir) = self.sdmc {
             validate_sdmc_dir(dir)?;
         }
         let report_path = program.dir().join("report.json");
         let trace_path = program.dir().join("trace.json");
         let mut cmd = Command::new(&self.bin);
-        cmd.arg("run-nro").arg(program.path()).arg(HEADLESS);
+        cmd.arg(subcommand).arg(program.path()).arg(HEADLESS);
         if let Some(tier) = self.cpu {
             cmd.arg(format!("--cpu={}", tier.as_flag_value()));
         }
@@ -320,6 +334,21 @@ impl Backend for Subprocess {
             report_json,
             trace_json,
         })
+    }
+}
+
+impl Backend for Subprocess {
+    fn run_nro(&self, program: &Staged, args: &[String]) -> Result<RunOutput, RunError> {
+        self.run_subcommand("run-nro", program, args)
+    }
+
+    fn run_nso(&self, program: &Staged, args: &[String]) -> Result<RunOutput, RunError> {
+        if !args.is_empty() {
+            return Err(RunError::InvalidNso(
+                "NSO programs do not accept guest arguments.".to_string(),
+            ));
+        }
+        self.run_subcommand("run", program, &[])
     }
 }
 
@@ -693,6 +722,17 @@ pub struct Staged {
 
 impl Staged {
     pub fn create(bytes: &[u8]) -> Result<Self, RunError> {
+        Self::create_named("program.nro", bytes)
+    }
+
+    /// Validates an `NSO0` image, decompresses any LZ4-compressed segments so backends that map
+    /// uncompressed NSO0 segments directly can execute it, and stages it as `program.nso`.
+    pub fn create_nso(bytes: &[u8]) -> Result<Self, RunError> {
+        let uncompressed = crate::nso::decompress_nso(bytes).map_err(RunError::InvalidNso)?;
+        Self::create_named("program.nso", &uncompressed)
+    }
+
+    fn create_named(filename: &str, bytes: &[u8]) -> Result<Self, RunError> {
         let dir = std::env::temp_dir().join(unique_name("run"));
         #[cfg(unix)]
         let builder = {
@@ -707,7 +747,7 @@ impl Staged {
             .create(&dir)
             .map_err(|e| RunError::Io(format!("cannot create {}: {e}", dir.display())))?;
         let staged = Staged {
-            file: dir.join("program.nro"),
+            file: dir.join(filename),
             dir,
         };
         fs::write(&staged.file, bytes)
@@ -1033,6 +1073,28 @@ mod tests {
             "{}",
             &out.stdout[out.stdout.len() - 100..]
         );
+        let _ = fs::remove_dir_all(bin.parent().unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_nso_invokes_run_subcommand_with_staged_uncompressed_nso() {
+        let bin = fake_core("echo \"out:$*\"; exit 0");
+        let runner = Subprocess::new(bin.clone(), Duration::from_secs(30));
+        let mut nso = vec![0u8; crate::nso::NSO_HEADER_SIZE];
+        nso[0..4].copy_from_slice(b"NSO0");
+        let staged = Staged::create_nso(&nso).unwrap();
+        let out = runner.run_nso(&staged, &[]).unwrap();
+        assert_eq!(out.exit_code, Some(0));
+        assert!(
+            out.stdout.contains(&format!(
+                "out:run {} --present=headless",
+                staged.path().display()
+            )),
+            "{}",
+            out.stdout
+        );
+        assert!(staged.path().ends_with("program.nso"));
         let _ = fs::remove_dir_all(bin.parent().unwrap());
     }
 }

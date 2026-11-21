@@ -8,8 +8,8 @@ ounce-hb runs homebrew through the released [ounce-core](https://github.com/hffg
 command-line tool by default, or a selected engine subprocess, and explains how each run stopped, with stable exit codes.
 
 > **Latest published release:** [See GitHub Releases](https://github.com/hffgzktbcc-blip/ounce-hb/releases/latest) for the current tag, downloadable files and release date. This CLI supervises supported open-source homebrew and explains how a run stopped; check [CHANGELOG.md](CHANGELOG.md) and your installed version for the exact available flags. Work on `main` is not necessarily released.
-> See [Usage](#usage), [docs/HOMEBREW_DEVELOPER_GUIDE.md](docs/HOMEBREW_DEVELOPER_GUIDE.md), [docs/LIMITS.md](docs/LIMITS.md), and
-> [docs/OUNCE_CORE_API_NEEDS.md](docs/OUNCE_CORE_API_NEEDS.md).
+> See [Usage](#usage), [docs/HOMEBREW_DEVELOPER_GUIDE.md](docs/HOMEBREW_DEVELOPER_GUIDE.md), [docs/LIMITS.md](docs/LIMITS.md),
+> [docs/CI_TROUBLESHOOTING.md](docs/CI_TROUBLESHOOTING.md), and [docs/OUNCE_CORE_API_NEEDS.md](docs/OUNCE_CORE_API_NEEDS.md).
 
 ## The Growing Family
 
@@ -48,7 +48,7 @@ ounce-hb serves as the zero-shim orchestrator and diagnostic judge across the fa
 
 ### In Scope
 - Unencrypted homebrew **NRO** files (`NRO0` magic at offset `0x10`).
-- Unencrypted homebrew **NSO** files (`NSO0` magic at offset `0x00`) built from source with devkitPro/libnx (format classification supported; execution planned).
+- Unencrypted homebrew **NSO** files (`NSO0` magic at offset `0x00`) built from source with devkitPro/libnx (format classification and clean-room execution supported).
 - Clean-room implementation derived solely from public specifications, libnx headers, and Arm manuals.
 - Clear error reporting, diagnostic exit codes, and automated verification guardrails.
 
@@ -69,7 +69,7 @@ Issues, pull requests, or discussions requesting retail software support, keys, 
 ### Prerequisites
 1. **Rust stable toolchain** (see [rust-toolchain.toml](rust-toolchain.toml)).
 2. **ounce-core CLI binary**: ounce-hb executes validated homebrew via `ounce-core run-nro <app.nro> --present=headless`.
-   - Get the [latest published Ounce-Core](https://github.com/hffgzktbcc-blip/ounce-core/releases/latest), or build Ounce-Core from source. **Compatibility-test baseline is separate from the latest release:** this repository's `nightly-parity.yml` and `ounce-core-e2e.yml` workflows currently pin Ounce-Core **v0.8.1**. Their results do not establish compatibility with every later Core release; test the installed pair if you need a specific feature.
+   - Get the [latest published Ounce-Core](https://github.com/hffgzktbcc-blip/ounce-core/releases/latest), or build Ounce-Core from source. **Compatibility-test baseline:** `ounce-core-e2e.yml` pins Ounce-Core **v0.10.0** (matching the `v0.10.0` / `v0.7.0` / `v0.2.0` family release line), while `nightly-parity.yml` pins **v0.8.1**. Test your installed pair if you rely on a specific feature.
    - Ensure `ounce-core` is available on your `PATH`, or specify its path directly via the `OUNCE_CORE_BIN` environment variable (e.g., `export OUNCE_CORE_BIN=/path/to/ounce-core`).
 
 ### Running a Homebrew Program

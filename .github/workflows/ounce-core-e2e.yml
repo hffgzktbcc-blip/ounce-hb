@@ -1,9 +1,9 @@
 name: ounce-core-e2e
-# Runs the end-to-end tests against the real ounce-core v0.8.1 release binary on Linux, macOS and
+# Runs the end-to-end tests against the real ounce-core v0.10.0 release binary on Linux, macOS and
 # Windows. Kept separate from ci.yml so that a change here cannot touch the main check job.
-# The sha256 of each asset is pinned here (copied from the release's SHA256SUMS on 2026-11-13) and
-# also checked against the SHA256SUMS downloaded with it, so neither a changed asset nor a changed
-# SHA256SUMS passes.
+# The sha256 of each asset is pinned here (copied from the v0.10.0 release's SHA256SUMS on
+# 2026-11-21) and also checked against the SHA256SUMS downloaded with it, so neither a changed asset
+# nor a changed SHA256SUMS passes.
 on:
   push:
     branches: [main]
@@ -14,7 +14,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  OUNCE_CORE_VERSION: v0.8.1
+  OUNCE_CORE_VERSION: v0.10.0
 
 jobs:
   e2e:
@@ -27,15 +27,15 @@ jobs:
           - os: ubuntu-latest
             name: linux-x86_64
             asset: ounce-core-linux-x86_64.tar.gz
-            sha256: d55af1ad1dd3f5f331e20c696e49e37f93a7ce1d4e93a8c33122310aa2ce0839
+            sha256: 32fa3df384877d156d9dbb7d4218be111eb6f9a3914601d19e43889489f6e0a5
           - os: macos-latest
             name: macos-arm64
             asset: ounce-core-macos-arm64.tar.gz
-            sha256: 5d332a3a16fd0aa12525b6c5a19035b518e60637782f6cbe9da8aa6c6a2214c8
+            sha256: 1b866288a2243027672d9273527db2a5d7929592182a054d1e814808dbacfd78
           - os: windows-latest
             name: windows-x86_64
             asset: ounce-core-windows-x86_64.zip
-            sha256: 4ea77d175f3613a3c1c98264a1ec38a5a405973f2d5ba30d6ed812fb45457b41
+            sha256: 95e85133c05378b0eeb3b6145fb708391a2fab4ddd168d3a16f1f4c9a714160e
     defaults:
       run:
         shell: bash
@@ -114,7 +114,7 @@ jobs:
       - name: End-to-end tests against ounce-core
         run: |
           set -o pipefail
-          cargo test --locked --test ounce_core_run --test ounce_core_e2e --test guest_args -- --nocapture 2>&1 | tee e2e.log
+          cargo test --locked --test ounce_core_run --test ounce_core_e2e --test guest_args --test libnx_nso_fixture -- --nocapture 2>&1 | tee e2e.log
           # Counts for the job summary. A test that returned early prints SKIPPED, and so does
           # the test harness's own line for a skipped test; `grep -c` exits 1 on zero matches.
           passed=$(awk '/^test result:/ { for (i = 1; i <= NF; i++) if ($i == "passed;") s += $(i - 1) } END { print s + 0 }' e2e.log)

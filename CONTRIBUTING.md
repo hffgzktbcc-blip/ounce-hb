@@ -96,4 +96,4 @@ scripts/guardrails.sh --self-test
 scripts/guardrails.sh
 ```
 
-In your pull request, explicitly state which commands you ran and confirm that they passed without warnings or errors.
+In your pull request, explicitly state which commands you ran and confirm that they passed without warnings or errors. If a local or CI check fails, see [docs/CI_TROUBLESHOOTING.md](docs/CI_TROUBLESHOOTING.md).
